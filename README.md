@@ -8,6 +8,8 @@ It forgets everything between sessions. It says "done" without checking. It hall
 
 The discipline lives in the files — which means it works with **Claude Code, Gemini CLI, Cursor, Codex, Aider, and Copilot Chat**. Switch models, switch tools, the rules stay.
 
+**[Learn more at magisystems.ai →](https://www.magisystems.ai/pages/opentenet.html)**
+
 ---
 
 ## Not just a prompt wrapper
