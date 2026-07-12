@@ -23,6 +23,8 @@ Index of everything in `memory/`. The AI reads `session-context.md` at session s
 | File | Purpose |
 |------|---------|
 | `session-context.md` | Auto-generated synthesis of all sources below. Do not edit by hand. |
+| `session-context-local.md` | Condensed variant for local / small-context models. Auto-generated. |
+| `session-context-codex.md` | Full-doctrine variant for Codex / Aider / Gemini CLI. Auto-generated. |
 | `identity.md` | Who you are, what you work on, how you communicate. |
 | `current-focus.md` | This week's priorities and blockers. |
 | `goals.md` | Mission, active goals, quarterly commitments. |

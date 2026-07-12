@@ -11,7 +11,7 @@ jobs:
     name: Frontmatter validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Run frontmatter check
         run: python3 tools/scripts/check_front_matter.py
 
@@ -19,7 +19,7 @@ jobs:
     name: Secret pattern scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Scan diff for secrets (PR)
@@ -42,6 +42,6 @@ jobs:
     name: Repo health check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Run repo health check
         run: python3 tools/scripts/check_repo_health.py
