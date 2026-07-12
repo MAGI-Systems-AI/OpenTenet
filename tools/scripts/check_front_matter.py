@@ -23,6 +23,9 @@ EXCLUDED_PATH_PARTS = {
 
 EXCLUDED_FILENAMES = {
     "README.md",
+    # Local-LLM session context: plain-text, intentionally frontmatter-free.
+    # The pre-commit hook exempts it too (.githooks/pre-commit); keep in sync.
+    "session-context-local.md",
 }
 
 
