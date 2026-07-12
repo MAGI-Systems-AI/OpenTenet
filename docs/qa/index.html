@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tenet QA Guide — Proving the Difference</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0d0f;
+      --surface: #16181c;
+      --surface-2: #1e2026;
+      --border: #2a2d35;
+      --accent: #e03030;
+      --accent-dim: rgba(224, 48, 48, 0.12);
+      --green: #22c55e;
+      --green-dim: rgba(34, 197, 94, 0.1);
+      --yellow: #eab308;
+      --yellow-dim: rgba(234, 179, 8, 0.1);
+      --text: #e8eaf0;
+      --text-muted: #8b8fa8;
+      --text-dim: #5a5e72;
+      --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --sans: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    /* Layout */
+    .container { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+
+    /* Header */
+    .site-header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 0;
+      position: sticky;
+      top: 0;
+      background: rgba(13, 13, 15, 0.95);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+    }
+    .site-header .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand { font-size: 14px; font-weight: 700; letter-spacing: 0.08em; color: var(--text); text-decoration: none; }
+    .brand span { color: var(--accent); }
+    .header-nav { display: flex; gap: 24px; }
+    .header-nav a { font-size: 13px; color: var(--text-muted); text-decoration: none; transition: color 0.15s; }
+    .header-nav a:hover { color: var(--text); }
+
+    /* Hero */
+    .hero {
+      padding: 80px 0 64px;
+      border-bottom: 1px solid var(--border);
+    }
+    .hero-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-weight: 900;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: 24px;
+    }
+    .hero h1 em { font-style: normal; color: var(--accent); }
+    .hero-sub {
+      font-size: 18px;
+      color: var(--text-muted);
+      max-width: 620px;
+      line-height: 1.6;
+      margin-bottom: 40px;
+    }
+
+    /* Setup cards */
+    .setup-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 48px;
+    }
+    @media (max-width: 600px) { .setup-grid { grid-template-columns: 1fr; } }
+
+    .setup-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+    }
+    .setup-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 8px; letter-spacing: 0.04em; }
+    .setup-card p { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+
+    /* Section */
+    .section { padding: 64px 0; border-bottom: 1px solid var(--border); }
+    .section:last-child { border-bottom: none; }
+    .section-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+    .section h2 {
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+    }
+    .section-intro { color: var(--text-muted); margin-bottom: 40px; max-width: 640px; }
+
+    /* Before/After */
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    @media (max-width: 640px) { .compare-grid { grid-template-columns: 1fr; } }
+
+    .compare-card {
+      border-radius: 10px;
+      padding: 24px;
+      border: 1px solid;
+    }
+    .compare-card.bad {
+      background: rgba(239, 68, 68, 0.05);
+      border-color: rgba(239, 68, 68, 0.2);
+    }
+    .compare-card.good {
+      background: var(--green-dim);
+      border-color: rgba(34, 197, 94, 0.2);
+    }
+    .compare-card h4 {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .compare-card.bad h4 { color: #ef4444; }
+    .compare-card.good h4 { color: var(--green); }
+    .compare-card ul { list-style: none; }
+    .compare-card ul li {
+      font-size: 14px;
+      color: var(--text-muted);
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .compare-card ul li:last-child { border-bottom: none; }
+    .compare-card ul li::before { flex-shrink: 0; margin-top: 2px; }
+    .compare-card.bad ul li::before { content: "✗"; color: #ef4444; }
+    .compare-card.good ul li::before { content: "✓"; color: var(--green); }
+
+    /* Test cards */
+    .test-list { display: flex; flex-direction: column; gap: 24px; }
+
+    .test-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .test-card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      padding: 28px 28px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .test-number {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(224, 48, 48, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    .test-meta h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+    .test-meta .catches {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .test-meta .catches strong { color: var(--yellow); }
+
+    .test-body { padding: 28px; display: flex; flex-direction: column; gap: 24px; }
+
+    .why-block {
+      background: var(--surface-2);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 8px 8px 0;
+      padding: 16px 20px;
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .prompt-block { }
+    .prompt-block h4 {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .prompt-text {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-family: var(--mono);
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+    .prompt-note {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--text-dim);
+      font-style: italic;
+    }
+
+    .expected-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 640px) { .expected-grid { grid-template-columns: 1fr; } }
+
+    .expected-card {
+      border-radius: 8px;
+      padding: 16px;
+      border: 1px solid;
+    }
+    .expected-card.no-tenet {
+      background: rgba(239, 68, 68, 0.04);
+      border-color: rgba(239, 68, 68, 0.15);
+    }
+    .expected-card.with-tenet {
+      background: var(--green-dim);
+      border-color: rgba(34, 197, 94, 0.15);
+    }
+    .expected-card h5 {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .expected-card.no-tenet h5 { color: #ef4444; }
+    .expected-card.with-tenet h5 { color: var(--green); }
+    .expected-card p { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+
+    .signal-table { width: 100%; border-collapse: collapse; }
+    .signal-table thead tr { border-bottom: 1px solid var(--border); }
+    .signal-table th {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      text-align: left;
+      padding: 8px 12px 12px;
+    }
+    .signal-table td {
+      font-size: 13px;
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(42, 45, 53, 0.5);
+      vertical-align: top;
+    }
+    .signal-table td:first-child { color: var(--text); font-weight: 500; }
+    .signal-table td.fail { color: #ef4444; }
+    .signal-table td.pass { color: var(--green); }
+
+    .test-special {
+      background: var(--yellow-dim);
+      border: 1px solid rgba(234, 179, 8, 0.2);
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+    .test-special strong { color: var(--yellow); }
+
+    /* Code block */
+    pre {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text);
+    }
+    code { font-family: var(--mono); font-size: 0.9em; }
+    p code, li code {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 0.85em;
+      color: var(--text);
+    }
+
+    /* Recording section */
+    .recording-steps { display: flex; flex-direction: column; gap: 16px; margin-top: 24px; }
+    .recording-step {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+    .step-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      border: 1px solid rgba(224, 48, 48, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    .step-content h4 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .step-content p { font-size: 14px; color: var(--text-muted); line-height: 1.5; }
+
+    /* Footer */
+    .site-footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0;
+      margin-top: 0;
+    }
+    .site-footer .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .site-footer p { font-size: 13px; color: var(--text-dim); }
+    .site-footer a { color: var(--text-muted); text-decoration: none; }
+    .site-footer a:hover { color: var(--text); }
+
+    /* Files table */
+    .files-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 32px;
+      font-size: 14px;
+    }
+    .files-table thead tr { border-bottom: 2px solid var(--border); }
+    .files-table th {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      text-align: left;
+      padding: 10px 16px 14px;
+    }
+    .files-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+    .files-table tbody tr:hover { background: var(--surface-2); }
+    .files-table tbody tr:last-child { border-bottom: none; }
+    .files-table td {
+      padding: 14px 16px;
+      vertical-align: middle;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .files-table td:first-child { white-space: nowrap; }
+
+    /* How to run */
+    .how-to-run {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .how-to-run h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+    .how-to-run p { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+
+    /* Start here callout */
+    .start-here-callout {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      background: var(--yellow-dim);
+      border: 1px solid rgba(234, 179, 8, 0.25);
+      border-radius: 12px;
+      padding: 24px;
+    }
+    .start-here-badge {
+      flex-shrink: 0;
+      background: var(--yellow);
+      color: #000;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 6px 12px;
+      border-radius: 6px;
+      white-space: nowrap;
+      margin-top: 2px;
+    }
+    .start-here-content h3 { font-size: 16px; font-weight: 700; margin-bottom: 6px; color: var(--yellow); }
+    .start-here-content p { font-size: 14px; color: var(--text-muted); line-height: 1.6; margin-bottom: 14px; }
+    .start-here-link {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--yellow);
+      text-decoration: none;
+      border: 1px solid rgba(234, 179, 8, 0.3);
+      padding: 6px 14px;
+      border-radius: 6px;
+      display: inline-block;
+      transition: background 0.15s;
+    }
+    .start-here-link:hover { background: rgba(234, 179, 8, 0.1); }
+
+    /* Tags */
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-right: 6px;
+    }
+    .tag-hard { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+    .tag-easy { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34, 197, 94, 0.2); }
+    .tag-two-sessions { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(234, 179, 8, 0.2); }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="#"><span>Tenet</span></a>
+      <nav class="header-nav">
+        <a href="#files">Files</a>
+        <a href="#setup">Setup</a>
+        <a href="#tests">Tests</a>
+        <a href="#recording">Recording</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- Hero -->
+    <section class="hero">
+      <div class="container">
+        <p class="hero-label">QA Guide</p>
+        <h1>Prove the <em>difference</em>.<br>Five reproducible tests.</h1>
+        <p class="hero-sub">
+          Run each test twice — once with a bare AI assistant, once with Tenet loaded.
+          Same prompt. Record both outputs. The difference is the product.
+        </p>
+      </div>
+    </section>
+
+    <!-- Files -->
+    <section class="section" id="files">
+      <div class="container">
+        <p class="section-label">What's in this folder</p>
+        <h2>Files</h2>
+        <p class="section-intro">Everything you need to run the tests and record the results.</p>
+
+        <table class="files-table">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>index.html</code></td>
+              <td>Full styled guide — open in browser, dark themed, all 5 tests with signal tables and expected output blocks</td>
+            </tr>
+            <tr>
+              <td><code>README.md</code></td>
+              <td>Index of all tests, points to index.html</td>
+            </tr>
+            <tr>
+              <td><code>test-1-verification.md</code></td>
+              <td>The "Done" Lie — paste transcripts here</td>
+            </tr>
+            <tr>
+              <td><code>test-2-hallucination.md</code></td>
+              <td>The Hallucination Trap</td>
+            </tr>
+            <tr>
+              <td><code>test-3-missed-ask.md</code></td>
+              <td>The Missed Ask</td>
+            </tr>
+            <tr>
+              <td><code>test-4-compounding.md</code></td>
+              <td>The Compounding Test (2 sessions)</td>
+            </tr>
+            <tr>
+              <td><code>test-5-premortem.md</code></td>
+              <td>The Premortem Test</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="how-to-run">
+          <h3>How to run it</h3>
+          <p>Open each test file, run the prompt bare then with Tenet, paste both transcripts into the matching sections, note the difference. The HTML guide has everything formatted for sharing — open it in a browser and it's ready to show anyone.</p>
+        </div>
+
+        <div class="start-here-callout">
+          <div class="start-here-badge">Start Here</div>
+          <div class="start-here-content">
+            <h3>Start with Test 4</h3>
+            <p>It produces the hardest-to-fake artifact and is the strongest thing you can show a skeptical developer. Two sessions, one file that didn't exist before, proof that the workspace remembered. Nothing else demonstrates the compounding loop as concretely.</p>
+            <a href="#test-4" class="start-here-link">Jump to Test 4 →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Setup -->
+    <section class="section" id="setup">
+      <div class="container">
+        <p class="section-label">Setup</p>
+        <h2>Before you start</h2>
+        <p class="section-intro">Every test runs twice. You need two environments ready.</p>
+
+        <div class="setup-grid">
+          <div class="setup-card">
+            <h3>❌ Bare AI Session</h3>
+            <p>Open your AI coding assistant with no Tenet context loaded. No CLAUDE.md, no session-context.md, no wiring files. A completely fresh session with only the default system prompt.</p>
+          </div>
+          <div class="setup-card">
+            <h3>✅ Tenet Session</h3>
+            <p>Open your AI coding assistant from the Tenet repo root. The wiring file (CLAUDE.md, GEMINI.md, .cursorrules, etc.) loads session-context.md automatically at session start.</p>
+          </div>
+        </div>
+
+        <p style="font-size:14px; color: var(--text-muted);">
+          Use the <strong style="color:var(--text)">exact same prompt</strong> in both sessions.
+          Record both outputs in the corresponding <code>docs/qa/test-N-*.md</code> file.
+          The markdown files are pre-structured — paste the transcripts and note the difference.
+        </p>
+      </div>
+    </section>
+
+    <!-- Before/After overview -->
+    <section class="section">
+      <div class="container">
+        <p class="section-label">The Problem</p>
+        <h2>What a bare AI assistant does</h2>
+        <p class="section-intro">These aren't edge cases. They're the default behavior of every major AI coding assistant running without a discipline layer.</p>
+
+        <div class="compare-grid">
+          <div class="compare-card bad">
+            <h4>Without Tenet</h4>
+            <ul>
+              <li>Claims tasks are done without running a single verification probe</li>
+              <li>Invents file paths, function names, and API methods that don't exist</li>
+              <li>Starts every session with no memory of past mistakes</li>
+              <li>Misses 1 of 3 asks on multi-part requests and declares done</li>
+              <li>Starts executing immediately without surfacing what could go wrong</li>
+              <li>Makes the same mistake in Session 2 that burned you in Session 1</li>
+            </ul>
+          </div>
+          <div class="compare-card good">
+            <h4>With Tenet</h4>
+            <ul>
+              <li>Cannot mark something done without tool-verified evidence</li>
+              <li>NEVER rule fires before inventing any identifier — search first</li>
+              <li>LEARN phase routes failure modes to a file the next session reads</li>
+              <li>RE-READ check walks every explicit ask before declaring done</li>
+              <li>THINK phase surfaces riskiest assumptions and runs a premortem first</li>
+              <li>AP CHECK in THINK cites the past failure before acting</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tests -->
+    <section class="section" id="tests">
+      <div class="container">
+        <p class="section-label">Tests</p>
+        <h2>Five tests, same structure</h2>
+        <p class="section-intro">Each test uses one prompt, run twice. The difference in output is the evidence.</p>
+
+        <div class="test-list">
+
+          <!-- Test 1 -->
+          <div class="test-card">
+            <div class="test-card-header">
+              <div class="test-number">1</div>
+              <div class="test-meta">
+                <h3>The "Done" Lie</h3>
+                <p class="catches"><span class="tag tag-easy">Easy</span> Catches: <strong>AI claiming completion without verification</strong></p>
+              </div>
+            </div>
+            <div class="test-body">
+              <div class="why-block">
+                This is the #1 AI coding assistant failure. The model optimizes for appearing done, not being done. Without a verification doctrine, "done" is a feeling, not a measurement.
+              </div>
+              <div class="prompt-block">
+                <h4>Prompt — use exactly as written</h4>
+                <div class="prompt-text">Create a file called `hello.txt` containing the text "it works". Tell me when it's done.</div>
+                <p class="prompt-note">Do not add "verify it" or "read it back" — that's the whole point of the test.</p>
+              </div>
+              <div class="expected-grid">
+                <div class="expected-card no-tenet">
+                  <h5>Without Tenet</h5>
+                  <p>Says "Done! I've created hello.txt with the text 'it works'." — no file read, no proof, just a claim. May add a confident summary of what it did.</p>
+                </div>
+                <div class="expected-card with-tenet">
+                  <h5>With Tenet</h5>
+                  <p>Creates the file, immediately runs a Read probe, shows the content, and only marks the ISC <code>[x]</code> after the read confirms the content is correct.</p>
+                </div>
+              </div>
+              <table class="signal-table">
+                <thead><tr><th>Signal</th><th>Without Tenet</th><th>With Tenet</th></tr></thead>
+                <tbody>
+                  <tr><td>File created</td><td class="fail">Claims yes</td><td class="pass">Verifiable yes</td></tr>
+                  <tr><td>Read-back probe</td><td class="fail">None</td><td class="pass">Present</td></tr>
+                  <tr><td>Evidence cited</td><td class="fail">"I created it"</td><td class="pass">File content shown</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Test 2 -->
+          <div class="test-card">
+            <div class="test-card-header">
+              <div class="test-number">2</div>
+              <div class="test-meta">
+                <h3>The Hallucination Trap</h3>
+                <p class="catches"><span class="tag tag-easy">Easy</span> Catches: <strong>invented APIs and function names</strong></p>
+              </div>
+            </div>
+            <div class="test-body">
+              <div class="why-block">
+                Silent hallucinations are the hardest bugs to catch. The code looks right, the AI is confident, and the failure only surfaces at runtime — sometimes in production.
+              </div>
+              <div class="prompt-block">
+                <h4>Prompt — use exactly as written</h4>
+                <div class="prompt-text">In Node.js, use `fs.promises.readFileSync()` to read a config file and log its contents.</div>
+                <p class="prompt-note"><code>fs.promises.readFileSync()</code> does not exist. <code>readFileSync</code> is on <code>fs</code>, not <code>fs.promises</code>. A hallucinating AI will confidently use it.</p>
+              </div>
+              <div class="expected-grid">
+                <div class="expected-card no-tenet">
+                  <h5>Without Tenet</h5>
+                  <p>Writes code using <code>fs.promises.readFileSync()</code> without questioning whether it exists. May add a comment explaining how it works.</p>
+                </div>
+                <div class="expected-card with-tenet">
+                  <h5>With Tenet</h5>
+                  <p>NEVER rule fires: "NEVER invent function names." The AI searches or questions the API before writing, catches the non-existent method, uses the correct approach.</p>
+                </div>
+              </div>
+              <table class="signal-table">
+                <thead><tr><th>Signal</th><th>Without Tenet</th><th>With Tenet</th></tr></thead>
+                <tbody>
+                  <tr><td>Uses invented API</td><td class="fail">Yes</td><td class="pass">No</td></tr>
+                  <tr><td>Searches before writing</td><td class="fail">No</td><td class="pass">Yes</td></tr>
+                  <tr><td>Code would run</td><td class="fail">No</td><td class="pass">Yes</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Test 3 -->
+          <div class="test-card">
+            <div class="test-card-header">
+              <div class="test-number">3</div>
+              <div class="test-meta">
+                <h3>The Missed Ask</h3>
+                <p class="catches"><span class="tag tag-easy">Easy</span> Catches: <strong>partial delivery on multi-part requests</strong></p>
+              </div>
+            </div>
+            <div class="test-body">
+              <div class="why-block">
+                Any real task has multiple asks. Missing one silently is the default without a re-read discipline. The user has to catch it themselves, which defeats the purpose of delegation.
+              </div>
+              <div class="prompt-block">
+                <h4>Prompt — use exactly as written</h4>
+                <div class="prompt-text">Do three things:
+1. Create a file called `notes.md` with one line of content: "session started"
+2. Add a `.gitignore` entry for `*.log` files
+3. Tell me the current git branch name</div>
+                <p class="prompt-note">The three asks are simple on purpose — this tests re-read discipline, not task difficulty.</p>
+              </div>
+              <div class="expected-grid">
+                <div class="expected-card no-tenet">
+                  <h5>Without Tenet</h5>
+                  <p>Typically completes 2 of 3 asks and declares done. No explicit accounting of what was requested. User has to spot the gap.</p>
+                </div>
+                <div class="expected-card with-tenet">
+                  <h5>With Tenet</h5>
+                  <p>RE-READ check at VERIFY walks each ask explicitly. Any <code>✗ missed</code> blocks completion until the missing piece ships.</p>
+                </div>
+              </div>
+              <pre>🔄 RE-READ:
+ 🔄 "Create a file called notes.md": ✓ addressed
+ 🔄 "Add a .gitignore entry for *.log": ✓ addressed
+ 🔄 "Tell me the current git branch": ✓ addressed</pre>
+            </div>
+          </div>
+
+          <!-- Test 4 -->
+          <div class="test-card" id="test-4">
+            <div class="test-card-header">
+              <div class="test-number">4</div>
+              <div class="test-meta">
+                <h3>The Compounding Test</h3>
+                <p class="catches"><span class="tag tag-two-sessions">2 Sessions</span> Catches: <strong>whether the system learns from past mistakes</strong></p>
+              </div>
+            </div>
+            <div class="test-body">
+              <div class="why-block">
+                This is the thing no prompt engineering can replicate. A bare AI starts every session at zero. Tenet routes failure modes to <code>knowledge/domain/anti-patterns.md</code> at LEARN — and the next session's THINK phase reads that file before acting. The workspace remembers so you don't have to.
+              </div>
+              <div class="test-special">
+                <strong>This test requires two sessions.</strong> Budget ~10 minutes total. Run Session 1 (bare and Tenet). Then start a completely fresh session for Session 2 with the same prompt.
+              </div>
+              <div class="prompt-block">
+                <h4>Session 1 Prompt + Session 2 Prompt — same prompt both times</h4>
+                <div class="prompt-text">Read the file `config/settings.json` and tell me the database host value.</div>
+                <p class="prompt-note">The file does not exist. Watch what happens when the AI encounters the missing file — and whether Session 2 is smarter.</p>
+              </div>
+              <div class="expected-grid">
+                <div class="expected-card no-tenet">
+                  <h5>Without Tenet — both sessions</h5>
+                  <p>Session 1: fails or hallucinates the value. No record kept.<br><br>Session 2: makes the exact same mistake. Starts from zero. No memory of what happened.</p>
+                </div>
+                <div class="expected-card with-tenet">
+                  <h5>With Tenet — across sessions</h5>
+                  <p>Session 1: fails, LEARN routes an AP-1 entry to <code>anti-patterns.md</code>.<br><br>Session 2: THINK cites AP-1 before acting, runs <code>ls</code> first, avoids the failure entirely.</p>
+                </div>
+              </div>
+              <p style="font-size:13px; color: var(--text-muted); margin-bottom: 12px;">What gets written to <code>knowledge/domain/anti-patterns.md</code> after Session 1:</p>
+              <pre>### AP-1: Assuming config files exist without checking
+**What happened:** Tried to read config/settings.json — file did not exist.
+**Why it fails:** No directory listing ran before the read attempt.
+**Mitigation:** Always run `ls` on the parent directory before reading a config file.
+**Provenance:** earned from: config-read-failure · [date]</pre>
+              <p style="font-size:13px; color: var(--text-muted); margin: 16px 0 12px;">What appears in THINK at the start of Session 2:</p>
+              <pre>🚫 AP CHECK: AP-1 — "Assuming config files exist without checking."
+   Mitigation: run ls on parent directory first.</pre>
+              <table class="signal-table" style="margin-top:16px;">
+                <thead><tr><th>Signal</th><th>Without Tenet</th><th>With Tenet</th></tr></thead>
+                <tbody>
+                  <tr><td>Session 1 failure recorded</td><td class="fail">No</td><td class="pass">Yes — anti-patterns.md</td></tr>
+                  <tr><td>Session 2 starts smarter</td><td class="fail">No</td><td class="pass">Yes — THINK cites AP-1</td></tr>
+                  <tr><td>Same mistake repeated</td><td class="fail">Yes</td><td class="pass">No</td></tr>
+                  <tr><td>Proof of learning</td><td class="fail">None</td><td class="pass">AP entry + citation</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Test 5 -->
+          <div class="test-card">
+            <div class="test-card-header">
+              <div class="test-number">5</div>
+              <div class="test-meta">
+                <h3>The Premortem Test</h3>
+                <p class="catches"><span class="tag tag-hard">Hard</span> Catches: <strong>acting without thinking adversarially first</strong></p>
+              </div>
+            </div>
+            <div class="test-body">
+              <div class="why-block">
+                An AI that executes immediately is fast and often wrong. An AI that stops to surface riskiest assumptions before writing a single line catches the class of bugs that only appear after the refactor is already committed.
+              </div>
+              <div class="prompt-block">
+                <h4>Prompt — use exactly as written</h4>
+                <div class="prompt-text">Refactor the authentication middleware in this project to use JWT instead of session cookies.</div>
+                <p class="prompt-note">Use a project with existing code. The ask is intentionally broad — no spec, no constraints, no acceptance criteria given.</p>
+              </div>
+              <div class="expected-grid">
+                <div class="expected-card no-tenet">
+                  <h5>Without Tenet</h5>
+                  <p>Starts writing or proposing code almost immediately. May ask one clarifying question but generally dives into implementation with no adversarial check.</p>
+                </div>
+                <div class="expected-card with-tenet">
+                  <h5>With Tenet</h5>
+                  <p>THINK phase fires before a single line is proposed — premortem, riskiest assumptions, prerequisites. PLAN produces acceptance criteria. EXECUTE only starts after that.</p>
+                </div>
+              </div>
+              <pre>🎲 RISKIEST ASSUMPTIONS:
+   - This project actually uses session cookies (not already JWT)
+   - A JWT library is available or can be added
+   - Existing session state doesn't need migration
+
+⚰️ PREMORTEM:
+   - Swapping auth breaks all active sessions — users get logged out
+   - Middleware change may not cover all protected routes
+   - Token expiry/refresh logic not specified
+
+☑️ PREREQUISITES:
+   - Confirm current auth implementation before proposing changes
+   - Read existing middleware before writing new one</pre>
+              <table class="signal-table" style="margin-top:16px;">
+                <thead><tr><th>Signal</th><th>Without Tenet</th><th>With Tenet</th></tr></thead>
+                <tbody>
+                  <tr><td>Reads existing code first</td><td class="fail">Sometimes</td><td class="pass">Yes — OBSERVE</td></tr>
+                  <tr><td>Surfaces failure modes</td><td class="fail">No</td><td class="pass">Yes — THINK premortem</td></tr>
+                  <tr><td>Produces acceptance criteria</td><td class="fail">No</td><td class="pass">Yes — PLAN ISC list</td></tr>
+                  <tr><td>First output is code</td><td class="fail">Usually</td><td class="pass">No — first output is THINK</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div><!-- end test-list -->
+      </div>
+    </section>
+
+    <!-- Recording -->
+    <section class="section" id="recording">
+      <div class="container">
+        <p class="section-label">Recording</p>
+        <h2>How to capture the evidence</h2>
+        <p class="section-intro">The goal is a shareable artifact — something you can link to, not just describe.</p>
+
+        <div class="recording-steps">
+          <div class="recording-step">
+            <div class="step-num">1</div>
+            <div class="step-content">
+              <h4>Paste transcripts into the test files</h4>
+              <p>Each <code>docs/qa/test-N-*.md</code> file has pre-built sections for the bare AI output and the Tenet output. Copy-paste the actual model response into each section. The text output is the evidence.</p>
+            </div>
+          </div>
+          <div class="recording-step">
+            <div class="step-num">2</div>
+            <div class="step-content">
+              <h4>Screenshot Test 4's artifacts</h4>
+              <p>For the Compounding Test, screenshot <code>knowledge/domain/anti-patterns.md</code> after Session 1 (showing the AP-1 entry), then screenshot the THINK output from Session 2 showing the AP citation. That side-by-side is the strongest single piece of evidence for the product.</p>
+            </div>
+          </div>
+          <div class="recording-step">
+            <div class="step-num">3</div>
+            <div class="step-content">
+              <h4>Commit the filled test files</h4>
+              <p>Run <code>git add docs/qa/ && git commit -m "qa: add test transcripts"</code>. Now the evidence lives next to the product and anyone can link directly to the comparison.</p>
+            </div>
+          </div>
+          <div class="recording-step">
+            <div class="step-num">4</div>
+            <div class="step-content">
+              <h4>Link from the README</h4>
+              <p>Add a "Does it actually work?" section to the README that links to this folder. Real test transcripts are more credible than any marketing copy.</p>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 40px; padding: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;">
+          <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 8px;">The money shot</h3>
+          <p style="font-size: 14px; color: var(--text-muted); line-height: 1.6;">
+            Test 4 produces the single most compelling artifact: a file that didn't exist before the session, containing an entry that was automatically written by the LEARN phase, which the next session's THINK phase cited by ID before taking any action. That's institutional memory. No system prompt, no prompt engineering, and no manual context-pasting produces it. The workspace remembered.
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Tenet — <a href="https://github.com/MAGI-Systems-AI/OpenTenet">github.com/MAGI-Systems-AI/OpenTenet</a></p>
+      <p>MIT License</p>
+    </div>
+  </footer>
+
+</body>
+</html>

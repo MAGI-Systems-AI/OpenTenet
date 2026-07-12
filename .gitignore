@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*~
+
+# Knowledge pipeline runtime
+knowledge/**/.processed/
+knowledge/**/.failed/
+
+# Temp files
+memory/*.tmp.*
+
+# Obsidian
+.obsidian/

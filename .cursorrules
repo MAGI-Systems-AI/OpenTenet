@@ -1,0 +1,42 @@
+# Tenet — Cursor Wiring
+
+Cursor reads this file at every session start. It loads Tenet's doctrine, your personal context, and the skills catalog before any work begins.
+
+## Session Bootstrap
+
+The synthesized startup context lives in `memory/session-context.md`. That single file catenates the constitution, the 4-phase algorithm, the ISC doctrine, the verification doctrine, effort tiering, your identity, current focus, goals, and the skills catalog.
+
+Read `memory/session-context.md` at the start of every session. Regenerate it after any change to its sources with `tools/scripts/build_session_context.sh`.
+
+## What To Follow
+
+For any non-trivial work (multi-file, ambiguous, touching `core/`, `memory/`, or `projects/{name}/`):
+
+- Run the 4-phase Algorithm. See `core/ALGORITHM.md`. Phases: OBSERVE → PLAN → EXECUTE → VERIFY.
+- Create a WORK note at `memory/work/{slug}.md` (or `projects/{name}/WORK.md` for project work). The WORK note is the system of record.
+- Write acceptance criteria per `core/ISC.md`. Every criterion is one binary tool probe. Apply the Splitting Test.
+- Hold to the verification doctrine. See `core/verification-doctrine.md`. Tool-verified evidence required before marking any ISC `[x]`.
+- Read the constitution. See `core/constitution.md`. The NEVER / ALWAYS / BEFORE rules are non-negotiable defaults.
+
+For skills, use the vendor-neutral CLI:
+
+- `bin/tenet-skill list` — one line per skill, name + description
+- `bin/tenet-skill show <name>` — print the full `SKILL.md` to stdout
+- `bin/tenet-skill path <name>` — print the absolute path (use with Cursor's `@`-mention)
+
+## Cursor-Specific Notes
+
+- **File format.** This file is `.cursorrules` at the repo root — supported by all Cursor versions. Cursor v0.43+ also supports `.cursor/rules/*.mdc`; this content can be copied verbatim to `.cursor/rules/tenet.mdc` with `alwaysApply: true`.
+- **Model selection.** Tenet's `reasoning_effort:` in the WORK note frontmatter maps to Cursor's model tier: `low` → fast, `medium` → mid-tier, `high` → top-tier. See `core/effort-tiering.md`.
+
+## Keep Higher-Priority Instructions in Force
+
+This file adds Tenet scaffolding on top of Cursor's defaults. When in doubt, the active prompt wins; Tenet doctrine wins on anything the active prompt doesn't speak to.
+
+## Verifying the Wiring
+
+Ask:
+
+> What's in memory/session-context.md? Summarize what this workspace is and what rules I'm operating under.
+
+If Cursor describes the constitution, the 4-phase algorithm, the ISC doctrine, the effort tiering, and the skills catalog — the wiring works.

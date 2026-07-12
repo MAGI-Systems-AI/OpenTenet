@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+"""tenet-skill — vendor-neutral discovery and on-demand load of Tenet skills.
+
+The vendor-neutral primitive for listing, inspecting, and loading the skills
+under skills/*/SKILL.md from any coding-assistant CLI. Designed so models
+running under Codex, Claude Code, Gemini CLI, Cursor, Aider, or any other
+shell-capable coding assistant can use the same convention to discover
+skills cheaply (one line per skill) and load a specific skill on demand
+(full body to stdout) without eagerly reading every SKILL.md.
+
+Auto-detects the workspace by walking up from the script's location looking
+for LAUNCHER.md and a skills/ directory. Override with --workspace or the
+PAI_WORKSPACE environment variable.
+
+Commands:
+    list                 Print every skill on one line: name and description.
+    show <name>          Print the full SKILL.md body for <name> to stdout.
+    path <name>          Print the absolute path to <name>'s SKILL.md.
+    help                 Print this usage.
+
+Usage:
+    bin/tenet-skill list
+    bin/tenet-skill show security-review
+    bin/tenet-skill path threat-modeling
+    bin/tenet-skill --workspace /path/to/workspace list
+
+Exit codes:
+    0    success
+    1    unknown skill, missing argument, or workspace not found
+    2    argparse / usage error
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import sys
+from pathlib import Path
+
+
+def find_workspace_root(start: Path) -> Path:
+    env = os.environ.get("PAI_WORKSPACE")
+    if env:
+        candidate = Path(env).expanduser().resolve()
+        if (candidate / "LAUNCHER.md").exists():
+            return candidate
+    cur = start.resolve()
+    for _ in range(8):
+        anchors = [(cur / "LAUNCHER.md").exists(), (cur / "START_HERE.md").exists()]
+        if any(anchors) and (cur / "skills").is_dir():
+            return cur
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    raise SystemExit(
+        f"could not find workspace root from {start}. "
+        f"Pass --workspace or set PAI_WORKSPACE."
+    )
+
+
+def parse_frontmatter(text: str) -> dict[str, str]:
+    if not text.startswith("---\n"):
+        return {}
+    end = text.find("\n---", 4)
+    if end == -1:
+        return {}
+    block = text[4:end]
+    fields: dict[str, str] = {}
+    current_key: str | None = None
+    for line in block.splitlines():
+        if not line.strip():
+            continue
+        match = re.match(r"^([A-Za-z0-9_-]+):\s*(.*)$", line)
+        if match and not line.startswith(" "):
+            current_key = match.group(1)
+            value = match.group(2).strip()
+            fields[current_key] = value
+        elif current_key and line.startswith(" "):
+            fields[current_key] = (fields[current_key] + " " + line.strip()).strip()
+    return fields
+
+
+def discover_skills(workspace: Path) -> list[tuple[str, Path, dict[str, str]]]:
+    skills_dir = workspace / "skills"
+    found: list[tuple[str, Path, dict[str, str]]] = []
+    if not skills_dir.is_dir():
+        return found
+    for child in sorted(skills_dir.iterdir()):
+        if not child.is_dir():
+            continue
+        skill_md = child / "SKILL.md"
+        if not skill_md.is_file():
+            continue
+        try:
+            text = skill_md.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        meta = parse_frontmatter(text)
+        name = meta.get("name", child.name)
+        found.append((name, skill_md, meta))
+    return found
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    workspace = (
+        Path(args.workspace).resolve()
+        if args.workspace
+        else find_workspace_root(Path(__file__).parent)
+    )
+    skills = discover_skills(workspace)
+    if not skills:
+        print(f"no skills found under {workspace / 'skills'}", file=sys.stderr)
+        return 1
+    for name, _path, meta in skills:
+        description = meta.get("description", "(no description)")
+        print(f"{name} - {description}")
+    return 0
+
+
+def cmd_show(args: argparse.Namespace) -> int:
+    workspace = (
+        Path(args.workspace).resolve()
+        if args.workspace
+        else find_workspace_root(Path(__file__).parent)
+    )
+    skills = {name: path for name, path, _meta in discover_skills(workspace)}
+    skill_path = skills.get(args.name)
+    if skill_path is None:
+        available = ", ".join(sorted(skills)) or "(none)"
+        print(f"unknown skill: {args.name}", file=sys.stderr)
+        print(f"available: {available}", file=sys.stderr)
+        return 1
+    sys.stdout.write(skill_path.read_text(encoding="utf-8"))
+    if not sys.stdout.isatty():
+        sys.stdout.flush()
+    return 0
+
+
+def cmd_path(args: argparse.Namespace) -> int:
+    workspace = (
+        Path(args.workspace).resolve()
+        if args.workspace
+        else find_workspace_root(Path(__file__).parent)
+    )
+    skills = {name: path for name, path, _meta in discover_skills(workspace)}
+    skill_path = skills.get(args.name)
+    if skill_path is None:
+        available = ", ".join(sorted(skills)) or "(none)"
+        print(f"unknown skill: {args.name}", file=sys.stderr)
+        print(f"available: {available}", file=sys.stderr)
+        return 1
+    print(str(skill_path.resolve()))
+    return 0
+
+
+def cmd_help(args: argparse.Namespace) -> int:
+    print(__doc__.strip())
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Vendor-neutral discovery and on-demand load of Tenet skills."
+    )
+    parser.add_argument(
+        "--workspace",
+        help="Workspace root (auto-detected from script location if omitted).",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    p_list = subparsers.add_parser("list", help="Print every skill, one per line.")
+    p_list.set_defaults(func=cmd_list)
+
+    p_show = subparsers.add_parser("show", help="Print a skill's SKILL.md to stdout.")
+    p_show.add_argument("name", help="Skill name (matches the frontmatter name: field).")
+    p_show.set_defaults(func=cmd_show)
+
+    p_path = subparsers.add_parser("path", help="Print the absolute path to a skill's SKILL.md.")
+    p_path.add_argument("name", help="Skill name (matches the frontmatter name: field).")
+    p_path.set_defaults(func=cmd_path)
+
+    p_help = subparsers.add_parser("help", help="Print full usage.")
+    p_help.set_defaults(func=cmd_help)
+
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

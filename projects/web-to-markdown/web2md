@@ -1,0 +1,377 @@
+#!/usr/bin/env python3
+"""
+Web to Markdown Converter
+A CLI tool to fetch a URL (or crawl a site) and convert main content to Markdown.
+
+Backends:
+  - httpx (fetch) + trafilatura (extraction)            — default, fast, ~70% of the open web
+  - Playwright headless chromium                         — opt-in via --render, for JS-rendered SPAs
+  - Sitemap-first BFS crawler with robots.txt + filters  — opt-in via --crawl
+"""
+
+import sys
+import re
+import argparse
+import urllib.robotparser
+from pathlib import Path
+from urllib.parse import urlparse, urljoin
+from xml.etree import ElementTree as ET
+
+import httpx
+import trafilatura
+
+
+DEFAULT_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/131.0.0.0 Safari/537.36"
+)
+
+RENDER_TIMEOUT_MS = 30_000
+SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+
+
+# ───────────────────────── Fetch layer ─────────────────────────
+
+def fetch_html(url: str, timeout: float = 30.0) -> str:
+    """Plain httpx GET with a real-browser UA. Follows redirects."""
+    with httpx.Client(
+        follow_redirects=True,
+        timeout=timeout,
+        headers={"User-Agent": DEFAULT_UA, "Accept": "text/html,*/*"},
+    ) as client:
+        response = client.get(url)
+        response.raise_for_status()
+        return response.text
+
+
+def render_html(url: str, timeout_ms: int = RENDER_TIMEOUT_MS) -> str:
+    """Headless chromium fetch. Waits for networkidle. Imported lazily."""
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            ctx = browser.new_context(user_agent=DEFAULT_UA)
+            page = ctx.new_page()
+            page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+            html = page.content()
+            ctx.close()
+            return html
+        finally:
+            browser.close()
+
+
+def fetch(url: str, render: bool = False) -> str:
+    """Unified fetch entry — render with Playwright when asked, else plain httpx."""
+    if render:
+        return render_html(url)
+    html = fetch_html(url)
+    if not trafilatura.extract(html):
+        return render_html(url)
+    return html
+
+
+# ───────────────────────── Extraction ──────────────────────────
+
+def extract_markdown(html: str, url: str, raw: bool = False) -> tuple[str | None, dict]:
+    """Run trafilatura on HTML; return (markdown, metadata)."""
+    if raw:
+        md = trafilatura.extract(
+            html, output_format="markdown",
+            include_links=True, include_tables=True, include_images=True,
+            favor_recall=True,
+        )
+        return md, {}
+
+    md = trafilatura.extract(
+        html, output_format="markdown",
+        with_metadata=False,
+        include_links=True, include_tables=True,
+    )
+    meta_obj = trafilatura.extract_metadata(html, default_url=url)
+    meta = meta_obj.as_dict() if meta_obj else {}
+    return md, meta
+
+
+# ───────────────────────── Output helpers ──────────────────────
+
+def slugify(text: str, fallback: str = "page") -> str:
+    if not text:
+        return fallback
+    text = text.strip().lower()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[\s_-]+", "-", text)
+    text = text.strip("-")
+    return text[:80] or fallback
+
+
+def build_frontmatter(meta: dict, url: str) -> str:
+    def esc(v):
+        if v is None:
+            return ""
+        return str(v).replace('"', '\\"')
+
+    lines = ["---", f'title: "{esc(meta.get("title", ""))}"', f'url: "{esc(url)}"']
+    for key in ("date", "author", "sitename", "description"):
+        val = meta.get(key)
+        if val:
+            field = "site" if key == "sitename" else key
+            lines.append(f'{field}: "{esc(val)}"')
+    lines.append("---\n\n")
+    return "\n".join(lines)
+
+
+def default_output_path(url: str, meta: dict, raw: bool, crawl_dir: Path | None = None) -> Path:
+    title = meta.get("title") if not raw else None
+    slug = slugify(title or url, fallback="page")
+    if crawl_dir is not None:
+        crawl_dir.mkdir(parents=True, exist_ok=True)
+        return crawl_dir / f"{slug}.md"
+    output_dir = Path(__file__).resolve().parent / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir / f"{slug}.md"
+
+
+# ───────────────────────── Single-URL flow ─────────────────────
+
+def convert_url(
+    url: str,
+    output: str | None = None,
+    to_stdout: bool = False,
+    raw: bool = False,
+    render: bool = False,
+    crawl_dir: Path | None = None,
+) -> str | None:
+    """Fetch → extract → write. Returns output path or None when stdout."""
+    html = fetch(url, render=render)
+    md, meta = extract_markdown(html, url, raw=raw)
+
+    if not md:
+        print(
+            f"trafilatura could not extract content from {url}.\n"
+            "The page may be JS-rendered (try --render), behind a paywall, "
+            "or unsupported. Falling through.",
+            file=sys.stderr,
+        )
+        return None
+
+    body = build_frontmatter(meta, url) + md if not raw else md
+
+    if to_stdout:
+        sys.stdout.write(body)
+        return None
+
+    output_path = Path(output) if output else default_output_path(url, meta, raw, crawl_dir)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(body, encoding="utf-8")
+    print(f"Done: {output_path}  ({len(body):,} characters)")
+    return str(output_path)
+
+
+# ───────────────────────── Sitemap discovery ───────────────────
+
+def _fetch_sitemap_xml(url: str) -> str | None:
+    try:
+        with httpx.Client(
+            follow_redirects=True, timeout=15.0,
+            headers={"User-Agent": DEFAULT_UA},
+        ) as client:
+            r = client.get(url)
+            if r.status_code == 200 and r.text.strip().startswith("<"):
+                return r.text
+    except httpx.RequestError:
+        return None
+    return None
+
+
+def discover_sitemap_urls(root: str, max_urls: int = 500) -> list[str]:
+    """Try /sitemap.xml, follow sitemap-index if present. Returns flat URL list."""
+    parsed = urlparse(root)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    candidates = [f"{base}/sitemap.xml", f"{base}/sitemap_index.xml"]
+    urls: list[str] = []
+
+    for sm_url in candidates:
+        xml = _fetch_sitemap_xml(sm_url)
+        if not xml:
+            continue
+        try:
+            tree = ET.fromstring(xml)
+        except ET.ParseError:
+            continue
+
+        # sitemap index → recurse into sub-sitemaps
+        sub_sitemaps = [loc.text for loc in tree.findall(".//sm:sitemap/sm:loc", SITEMAP_NS) if loc.text]
+        if sub_sitemaps:
+            for sub in sub_sitemaps:
+                sub_xml = _fetch_sitemap_xml(sub)
+                if not sub_xml:
+                    continue
+                try:
+                    sub_tree = ET.fromstring(sub_xml)
+                except ET.ParseError:
+                    continue
+                urls.extend(loc.text for loc in sub_tree.findall(".//sm:url/sm:loc", SITEMAP_NS) if loc.text)
+                if len(urls) >= max_urls:
+                    break
+        else:
+            urls.extend(loc.text for loc in tree.findall(".//sm:url/sm:loc", SITEMAP_NS) if loc.text)
+
+        if urls:
+            break
+
+    return urls[:max_urls]
+
+
+# ───────────────────────── Crawl ───────────────────────────────
+
+def _robots_for(base: str) -> urllib.robotparser.RobotFileParser:
+    rp = urllib.robotparser.RobotFileParser()
+    rp.set_url(urljoin(base, "/robots.txt"))
+    try:
+        rp.read()
+    except Exception:
+        pass  # missing robots.txt → permissive
+    return rp
+
+
+def _extract_links(html: str, base_url: str) -> list[str]:
+    """Cheap link extraction via regex. Avoids adding a parser dependency."""
+    hrefs = re.findall(r'href=["\']([^"\']+)["\']', html, flags=re.IGNORECASE)
+    out = []
+    for h in hrefs:
+        if h.startswith(("javascript:", "mailto:", "tel:", "#")):
+            continue
+        absolute = urljoin(base_url, h)
+        absolute = absolute.split("#", 1)[0]
+        out.append(absolute)
+    return out
+
+
+def crawl(
+    seed: str,
+    depth: int = 2,
+    include: str | None = None,
+    exclude: str | None = None,
+    max_pages: int = 50,
+    render: bool = False,
+    raw: bool = False,
+) -> list[str]:
+    """Sitemap-first BFS crawler with robots.txt, same-domain restriction, regex filters."""
+    seed_host = urlparse(seed).netloc
+    base = f"{urlparse(seed).scheme}://{seed_host}"
+    rp = _robots_for(base)
+
+    include_re = re.compile(include) if include else None
+    exclude_re = re.compile(exclude) if exclude else None
+
+    def traversable(u: str) -> bool:
+        """Can we fetch this URL at all? Same-domain + robots only."""
+        if urlparse(u).netloc != seed_host:
+            return False
+        if not rp.can_fetch(DEFAULT_UA, u):
+            return False
+        return True
+
+    def savable(u: str) -> bool:
+        """Should we save this URL's extracted markdown? Apply include/exclude here."""
+        if include_re and not include_re.search(u):
+            return False
+        if exclude_re and exclude_re.search(u):
+            return False
+        return True
+
+    crawl_dir = Path(__file__).resolve().parent / "output" / seed_host
+
+    # Seed queue with sitemap if available, plus the seed URL itself
+    sitemap_urls = [u for u in discover_sitemap_urls(seed) if traversable(u)]
+    if sitemap_urls:
+        print(f"Sitemap: {len(sitemap_urls)} URLs discovered for {seed_host}", file=sys.stderr)
+
+    queue: list[tuple[str, int]] = [(seed, 0)] + [(u, 1) for u in sitemap_urls]
+    seen: set[str] = set()
+    written: list[str] = []
+
+    while queue and len(written) < max_pages:
+        url, d = queue.pop(0)
+        if url in seen or d > depth or not traversable(url):
+            continue
+        seen.add(url)
+
+        try:
+            html = fetch(url, render=render)
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            print(f"  skip {url}: {e}", file=sys.stderr)
+            continue
+
+        if savable(url):
+            md, meta = extract_markdown(html, url, raw=raw)
+            if md:
+                body = build_frontmatter(meta, url) + md if not raw else md
+                out_path = default_output_path(url, meta, raw, crawl_dir)
+                out_path.write_text(body, encoding="utf-8")
+                print(f"  saved: {out_path.name}", file=sys.stderr)
+                written.append(str(out_path))
+
+        if d < depth:
+            for link in _extract_links(html, url):
+                if link not in seen:
+                    queue.append((link, d + 1))
+
+    print(f"Crawl complete: {len(written)} pages written to {crawl_dir}", file=sys.stderr)
+    return written
+
+
+# ───────────────────────── CLI ─────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="web2md",
+        description="Fetch a URL (or crawl a site) and convert main content to Markdown.",
+    )
+    parser.add_argument("url", help="URL to scrape (or seed URL when --crawl)")
+    parser.add_argument("-o", "--output", help="Output file path (single-URL only)")
+    parser.add_argument("--stdout", action="store_true", help="Write to stdout (single-URL only)")
+    parser.add_argument("--raw", action="store_true", help="Skip frontmatter, emit raw markdown")
+    parser.add_argument("--render", action="store_true",
+                        help="Render JS with headless chromium (slower; for SPAs)")
+    parser.add_argument("--crawl", action="store_true",
+                        help="Crawl from seed: sitemap-first BFS, same-domain")
+    parser.add_argument("--depth", type=int, default=2, help="Crawl depth (default: 2)")
+    parser.add_argument("--include", help="Regex; only crawl URLs matching")
+    parser.add_argument("--exclude", help="Regex; skip URLs matching")
+    parser.add_argument("--max-pages", type=int, default=50, help="Crawl page cap (default: 50)")
+    args = parser.parse_args()
+
+    try:
+        if args.crawl:
+            crawl(
+                seed=args.url,
+                depth=args.depth,
+                include=args.include,
+                exclude=args.exclude,
+                max_pages=args.max_pages,
+                render=args.render,
+                raw=args.raw,
+            )
+        else:
+            convert_url(
+                args.url,
+                output=args.output,
+                to_stdout=args.stdout,
+                raw=args.raw,
+                render=args.render,
+            )
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP error {e.response.status_code} fetching {args.url}", file=sys.stderr)
+        sys.exit(1)
+    except httpx.RequestError as e:
+        print(f"Network error fetching {args.url}: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

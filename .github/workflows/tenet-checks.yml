@@ -1,0 +1,47 @@
+name: Tenet checks
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontmatter:
+    name: Frontmatter validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run frontmatter check
+        run: python3 tools/scripts/check_front_matter.py
+
+  secret-scan:
+    name: Secret pattern scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan diff for secrets (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          chmod +x tools/scripts/secret_scan_diff.sh
+          tools/scripts/secret_scan_diff.sh origin/${{ github.base_ref }} HEAD
+      - name: Scan diff for secrets (push)
+        if: github.event_name == 'push'
+        run: |
+          chmod +x tools/scripts/secret_scan_diff.sh
+          BEFORE="${{ github.event.before }}"
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "Initial push — skipping diff scan"
+          else
+            tools/scripts/secret_scan_diff.sh "$BEFORE" HEAD
+          fi
+
+  repo-health:
+    name: Repo health check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run repo health check
+        run: python3 tools/scripts/check_repo_health.py

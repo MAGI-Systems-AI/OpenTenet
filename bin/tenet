@@ -1,0 +1,554 @@
+#!/usr/bin/env python3
+"""tenet — a basic agentic runner for Tenet.
+
+Where the rest of Tenet is a *cognitive* loop (a model reads doctrine and
+reasons in text, nothing executes), this is an *agentic* loop: in each phase
+the model may emit tool calls that REALLY EXECUTE — shell commands, file
+reads/writes — against this workspace.
+
+  This code    = operating layer: six phases, state, tool dispatch, WORK note
+  LLM backend  = swappable inference engine (openai-compatible | ollama | claude | mock)
+  Tools        = real, UNGATED execution (shell + files) over the workspace
+
+This is the BASIC tier on purpose: a plain tool-calling loop, three tools, and
+workspace path-confinement. There is no policy gate, no signed audit chain,
+no multi-agent registry or delegation, no executor swap — that governed layer
+is a different, separate product. This is meant to look like what any basic
+agent script looks like (a ReAct-style loop over a few tools), not a
+governance platform.
+
+Safety posture: ungated execution is a deliberate choice for a single-user,
+personal workspace. Bind any server you build around this to localhost only.
+The model API key is read from env / a gitignored local config file — never
+written to a committed file.
+
+Stdlib only (no pip) so this runs anywhere Python 3 runs.
+"""
+
+from __future__ import annotations
+
+import datetime
+import json
+import os
+import re
+import subprocess
+import urllib.error
+import urllib.request
+
+# ---------------------------------------------------------------------------
+# Workspace resolution — same contract as the rest of Tenet (CLAUDE.md + core/)
+# ---------------------------------------------------------------------------
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def find_workspace() -> str:
+    """Locate the Tenet workspace (CLAUDE.md + core/). Walk up from this script."""
+    env = os.environ.get("TENET_WORKSPACE")
+    if env and os.path.isdir(env):
+        return os.path.abspath(env)
+    cur = HERE
+    while True:
+        if os.path.isfile(os.path.join(cur, "CLAUDE.md")) and os.path.isdir(
+            os.path.join(cur, "core")
+        ):
+            return cur
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return HERE
+        cur = parent
+
+
+ROOT = find_workspace()
+CONFIG_FILE = os.path.join(ROOT, "memory", "local-llm-config.md")
+DOCTRINE_FILE = os.path.join(ROOT, "memory", "session-context-local.md")
+IDENTITY_FILE = os.path.join(ROOT, "memory", "identity.md")
+WORK_DIR = os.path.join(ROOT, "memory", "work")
+MAX_TOOL_OUTPUT = int(os.environ.get("TENET_MAX_TOOL_OUTPUT", "6000"))
+MAX_STEPS_PER_PHASE = int(os.environ.get("TENET_MAX_STEPS", "6"))
+LLM_TIMEOUT = int(os.environ.get("TENET_LLM_TIMEOUT", "300"))
+
+# ---------------------------------------------------------------------------
+# Config — file < env; key never committed
+# ---------------------------------------------------------------------------
+
+def read_config_file() -> dict:
+    cfg: dict[str, str] = {}
+    if not os.path.isfile(CONFIG_FILE):
+        return cfg
+    with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
+        for line in fh:
+            m = re.match(r"^([a-zA-Z_]+):\s*(.+?)\s*$", line)
+            if m:
+                cfg[m.group(1).lower()] = m.group(2)
+    return cfg
+
+
+def resolve_config() -> dict:
+    f = read_config_file()
+    backend = os.environ.get("TENET_BACKEND") or f.get("backend") or "mock"
+    model = os.environ.get("TENET_MODEL") or f.get("model") or "qwen3"
+    openai_url = (
+        os.environ.get("TENET_OPENAI_URL") or f.get("openai_url") or "http://localhost:8080"
+    )
+    ollama_url = os.environ.get("OLLAMA_URL") or f.get("ollama_url") or "http://localhost:11434"
+    api_key = (
+        os.environ.get("TENET_API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+        or f.get("api_key")
+        or ""
+    )
+    anthropic_key = (
+        os.environ.get("TENET_ANTHROPIC_KEY")
+        or os.environ.get("ANTHROPIC_API_KEY")
+        or f.get("anthropic_key")
+        or ""
+    )
+    if not anthropic_key:
+        try:
+            with open(os.path.expanduser("~/.anthropic_api_key")) as fh:
+                anthropic_key = fh.read().strip()
+        except OSError:
+            pass
+    return {
+        "backend": backend,
+        "model": model,
+        "openai_url": openai_url.rstrip("/"),
+        "ollama_url": ollama_url.rstrip("/"),
+        "api_key": api_key,
+        "anthropic_key": anthropic_key,
+    }
+
+
+def load_doctrine() -> str:
+    if os.path.isfile(DOCTRINE_FILE):
+        with open(DOCTRINE_FILE, "r", encoding="utf-8") as fh:
+            return fh.read()
+    return ""
+
+
+def load_identity() -> str:
+    """The user's own memory/identity.md, if they've filled it in.
+
+    No hardcoded operator/brand identity ships here — Tenet is generic and
+    personal by design, so whatever identity the model has comes from the
+    user's own workspace file, not from this code.
+    """
+    if os.path.isfile(IDENTITY_FILE):
+        with open(IDENTITY_FILE, "r", encoding="utf-8") as fh:
+            return fh.read()
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Backends — each takes a message list, returns assistant text.
+# ---------------------------------------------------------------------------
+
+def call_openai(messages: list, cfg: dict) -> str:
+    url = cfg["openai_url"] + "/v1/chat/completions"
+    payload = json.dumps(
+        {"model": cfg["model"], "messages": messages, "stream": False, "temperature": 0.3}
+    ).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if cfg["api_key"]:
+        headers["Authorization"] = "Bearer " + cfg["api_key"]
+    req = urllib.request.Request(url, data=payload, headers=headers)
+    with urllib.request.urlopen(req, timeout=LLM_TIMEOUT) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return data["choices"][0]["message"]["content"]
+
+
+def call_ollama(messages: list, cfg: dict) -> str:
+    url = cfg["ollama_url"] + "/api/chat"
+    payload = json.dumps(
+        {"model": cfg["model"], "messages": messages, "stream": False,
+         "options": {"num_ctx": 8192, "temperature": 0.3}}
+    ).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=LLM_TIMEOUT) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return data["message"]["content"]
+
+
+def call_claude(messages: list, cfg: dict) -> str:
+    url = "https://api.anthropic.com/v1/messages"
+    system = ""
+    chat_messages = []
+    for m in messages:
+        if m["role"] == "system":
+            system = m["content"]
+        else:
+            chat_messages.append({"role": m["role"], "content": m["content"]})
+    payload: dict = {"model": cfg["model"], "max_tokens": 8096, "messages": chat_messages}
+    if system:
+        payload["system"] = system
+    api_key = cfg.get("anthropic_key") or cfg.get("api_key") or ""
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+    }
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
+    with urllib.request.urlopen(req, timeout=LLM_TIMEOUT) as resp:
+        data = json.loads(resp.read().decode())
+    return data["content"][0]["text"]
+
+
+def call_mock(messages: list, cfg: dict) -> str:
+    """Deterministic backend for harness verification — no model or API key needed."""
+    last = messages[-1]["content"] if messages else ""
+    phase = "OBSERVE"
+    m = re.search(r"PHASE\s+([A-Z]+)", last)
+    if m:
+        phase = m.group(1)
+    if phase == "EXECUTE":
+        return (
+            "I'll create a proof artifact and confirm it.\n"
+            '```tenet-tool\n{"tool": "write_file", "path": "memory/work/.tenet-mock-proof.txt", '
+            '"content": "tenet mock EXECUTE ran"}\n```'
+        )
+    return (
+        f"{phase}: mock backend acknowledging the phase. Proceeding per doctrine.\n"
+        '```tenet-tool\n{"tool": "finish_phase", "summary": "' + phase + ' complete (mock)."}\n```'
+    )
+
+
+BACKENDS = {"openai": call_openai, "ollama": call_ollama, "claude": call_claude, "mock": call_mock}
+
+
+# ---------------------------------------------------------------------------
+# Tools — REAL, UNGATED execution against the workspace. Three tools, one
+# safety rail (path confinement). No policy gate, no audit chain.
+# ---------------------------------------------------------------------------
+
+def _truncate(s: str) -> str:
+    if len(s) > MAX_TOOL_OUTPUT:
+        return s[:MAX_TOOL_OUTPUT] + f"\n...[truncated {len(s) - MAX_TOOL_OUTPUT} chars]"
+    return s
+
+
+def tool_shell(args: dict) -> str:
+    cmd = args.get("cmd", "")
+    if not cmd:
+        return "[error] shell: missing 'cmd'"
+    try:
+        p = subprocess.run(
+            cmd, shell=True, cwd=ROOT, capture_output=True, text=True, timeout=120
+        )
+        out = (p.stdout or "") + (("\n[stderr]\n" + p.stderr) if p.stderr else "")
+        return _truncate(f"[exit {p.returncode}]\n{out}".strip())
+    except subprocess.TimeoutExpired:
+        return "[error] shell: timed out after 120s"
+    except Exception as e:  # noqa: BLE001
+        return f"[error] shell: {e}"
+
+
+def _safe_path(path: str) -> str:
+    p = path if os.path.isabs(path) else os.path.join(ROOT, path)
+    return os.path.normpath(p)
+
+
+def tool_read_file(args: dict) -> str:
+    path = args.get("path", "")
+    p = _safe_path(path)
+    if not os.path.isfile(p):
+        return f"[error] read_file: not found: {path}"
+    try:
+        with open(p, "r", encoding="utf-8", errors="replace") as fh:
+            return _truncate(fh.read())
+    except Exception as e:  # noqa: BLE001
+        return f"[error] read_file: {e}"
+
+
+def tool_write_file(args: dict) -> str:
+    path = args.get("path", "")
+    content = args.get("content", "")
+    if not path:
+        return "[error] write_file: missing 'path'"
+    p = _safe_path(path)
+    try:
+        os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        return f"[ok] wrote {len(content)} chars to {path}"
+    except Exception as e:  # noqa: BLE001
+        return f"[error] write_file: {e}"
+
+
+TOOLS = {"shell": tool_shell, "read_file": tool_read_file, "write_file": tool_write_file}
+
+
+# ---------------------------------------------------------------------------
+# Tool-call protocol — fenced ```tenet-tool blocks holding one JSON object.
+# ---------------------------------------------------------------------------
+
+TOOL_BLOCK_RE = re.compile(r"```\s*tenet-tool\s*\n?([\s\S]*?)\n?```", re.DOTALL)
+TOOL_UNFENCED_RE = re.compile(r"^tenet-tool\s*\n(\{[\s\S]*?\})\s*(?=\n|$)", re.MULTILINE)
+THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def strip_think(text: str) -> str:
+    return THINK_RE.sub("", text).strip()
+
+
+def strip_tool_blocks(text: str) -> str:
+    text = TOOL_BLOCK_RE.sub("", text)
+    text = TOOL_UNFENCED_RE.sub("", text)
+    return text.strip()
+
+
+def _parse_json_object(s: str):
+    """Balanced-brace scan — handles nested objects and strings containing '}'."""
+    s = s.strip()
+    if not s.startswith("{"):
+        return None
+    depth = 0
+    in_str = False
+    escape = False
+    for i, ch in enumerate(s):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_str:
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(s[: i + 1])
+                except json.JSONDecodeError:
+                    return None
+    return None
+
+
+def parse_tool_calls(text: str) -> list:
+    calls = []
+    for m in TOOL_BLOCK_RE.finditer(text):
+        obj = _parse_json_object(m.group(1).strip())
+        if obj and "tool" in obj:
+            calls.append(obj)
+    if calls:
+        return calls
+    for m in TOOL_UNFENCED_RE.finditer(text):
+        obj = _parse_json_object(m.group(1).strip())
+        if obj and "tool" in obj:
+            calls.append(obj)
+    return calls
+
+
+# ---------------------------------------------------------------------------
+# The Algorithm — six phases, each an inner ReAct loop.
+# ---------------------------------------------------------------------------
+
+PHASES = [
+    ("OBSERVE", "Restate the task intent in one sentence. Capture current state "
+                "(use tools to look — read files, grep memory/ and knowledge/). "
+                "Draft an initial ISC list incl. >=1 anti-criterion."),
+    ("THINK", "List riskiest assumptions, a premortem, prerequisites, and check "
+              "against anti-patterns (knowledge/domain/anti-patterns.md). Refine the ISCs."),
+    ("PLAN", "Define scope, deliverables D1..DN, map each to >=1 ISC, state execution order."),
+    ("EXECUTE", "Do the work. You MAY run real tools (shell, write_file) to make "
+                "actual changes. Produce each deliverable concretely."),
+    ("VERIFY", "For each ISC, run a real verification probe (shell/read_file) and state "
+               "the evidence. Do not claim pass without a probe."),
+    ("LEARN", "State what to do differently, what the loop revealed, and which durable "
+              "learnings route to knowledge/ (patterns / anti-patterns / discoveries)."),
+]
+
+SYSTEM_PROMPT_TAIL = """
+--- Tenet AGENT LAYER ---
+
+This code owns the loop: six phases, state, and tool dispatch. You are the
+inference engine inside it — you decide the next action WITHIN the current
+phase; the loop advances you through OBSERVE -> THINK -> PLAN -> EXECUTE ->
+VERIFY -> LEARN.
+
+WORKSPACE LAYOUT (paths are relative to the workspace root):
+  core/                 doctrine (constitution, ALGORITHM, ISC, verification)
+  memory/               operational state, WORK notes (memory/work/), identity
+  knowledge/            curated reference; domain/patterns.md, domain/anti-patterns.md
+  skills/               reusable workflows; `bin/tenet-skill list|show <name>`
+
+TOOLS — emit a fenced block EXACTLY like this to call one (one JSON object):
+```tenet-tool
+{"tool": "shell", "cmd": "ls memory/"}
+```
+Available tools:
+  shell       {"cmd": "<bash run in workspace root>"}   -> stdout/stderr (REAL execution)
+  read_file   {"path": "<path>"}                          -> file contents
+  write_file  {"path": "<path>", "content": "<text>"}     -> writes the file (REAL)
+  finish_phase{"summary": "<what this phase concluded>"}   -> ends THIS phase, advances
+
+Rules:
+- Use tools to look before you assert. Cite path:line when you can.
+- One or more tool blocks per message; after I run them I return their output, then you continue.
+- When the phase's work is done, emit finish_phase. Keep each phase focused.
+- Real execution is enabled and UNGATED — be deliberate; prefer the smallest reversible step.
+- This is a BASIC agent: no policy gate, no audit signing, no sub-agents. Don't claim any of
+  those capabilities exist.
+"""
+
+
+def slugify(text: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return "-".join(s.split("-")[:6]) or "task"
+
+
+class TenetAgent:
+    def __init__(self, cfg: dict | None = None, emit=None):
+        self.cfg = cfg or resolve_config()
+        self.emit = emit or (lambda ev: None)
+        self.doctrine = load_doctrine()
+        self.identity = load_identity()
+        self.backend = BACKENDS.get(self.cfg["backend"], call_mock)
+
+    def _system_prompt(self) -> str:
+        parts = [self.doctrine]
+        if self.identity:
+            parts.append("\n--- YOUR OPERATOR (memory/identity.md) ---\n" + self.identity)
+        parts.append(SYSTEM_PROMPT_TAIL)
+        return "\n".join(p for p in parts if p)
+
+    def _llm(self, messages: list) -> str:
+        try:
+            return self.backend(messages, self.cfg)
+        except urllib.error.HTTPError as e:
+            body = e.read()[:200]
+            return f"[LLM_ERROR HTTP {e.code}: {body!r}] (emit finish_phase to continue)"
+        except Exception as e:  # noqa: BLE001
+            return f"[LLM_ERROR {e}] (emit finish_phase to continue)"
+
+    def run(self, task: str, tier: str = "standard", plan_only: bool = False) -> str:
+        now = datetime.datetime.now()
+        stamp = now.strftime("%Y%m%d-%H%M%S")
+        slug = f"{stamp}_{slugify(task)}"
+        os.makedirs(WORK_DIR, exist_ok=True)
+        note_path = os.path.join(WORK_DIR, slug + ".md")
+        iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        self.emit({"type": "run_start", "task": task, "backend": self.cfg["backend"],
+                   "model": self.cfg["model"], "note": os.path.relpath(note_path, ROOT)})
+
+        system = {"role": "system", "content": self._system_prompt()}
+        nothink = " /no_think" if self.cfg["backend"] in ("openai", "ollama") else ""
+        messages = [system,
+                    {"role": "user", "content": f"TASK: {task}\nTier: {tier}.{nothink}"}]
+
+        # Matches templates/work-note-template.md's frontmatter shape.
+        sections = [
+            f"---\ntask: {task}\nslug: {slug}\nphase: {'plan' if plan_only else 'complete'}\n"
+            f"tier: {tier}\nreasoning_effort: medium\nbackend: {self.cfg['backend']}\n"
+            f"model: {self.cfg['model']}\nrunner: bin/tenet\n"
+            f"started: {iso}\nupdated: {iso}\n---\n\n# {task}\n\n"
+            f"> Basic agentic runner · engine: {self.cfg['backend']} ({self.cfg['model']}) "
+            f"· ungated tool execution · doctrine {len(self.doctrine)} chars\n\n"
+        ]
+
+        phases = PHASES[:3] if plan_only else PHASES
+        for phase, instruction in phases:
+            self.emit({"type": "phase_start", "phase": phase})
+            messages.append({"role": "user",
+                             "content": f"PHASE {phase} — {instruction}\nWork this phase now. "
+                                        f"Use tools, then finish_phase."})
+            phase_md = [f"## {phase}\n\n"]
+            finished = False
+            for _step in range(MAX_STEPS_PER_PHASE):
+                reply = self._llm(messages)
+                messages.append({"role": "assistant", "content": reply})
+                narration = strip_think(strip_tool_blocks(reply))
+                if narration:
+                    self.emit({"type": "model", "phase": phase, "text": narration})
+                    phase_md.append(narration + "\n\n")
+                calls = parse_tool_calls(reply)
+                if not calls:
+                    self.emit({"type": "model", "phase": phase,
+                               "text": "(no tool call — advancing phase)"})
+                    break
+                stop = False
+                tool_results = []
+                for call in calls:
+                    name = call.get("tool")
+                    if name == "finish_phase":
+                        summary = call.get("summary", "")
+                        self.emit({"type": "phase_done", "phase": phase, "summary": summary})
+                        phase_md.append(f"**Phase result:** {summary}\n\n")
+                        stop = True
+                        break
+                    fn = TOOLS.get(name)
+                    result = fn(call) if fn else f"[error] unknown tool: {name}"
+                    self.emit({"type": "tool", "phase": phase, "tool": name,
+                               "args": {k: v for k, v in call.items() if k != "tool"},
+                               "result": result})
+                    phase_md.append(
+                        f"```\n[tool] {name} {json.dumps({k: v for k, v in call.items() if k != 'tool'})}\n"
+                        f"{result}\n```\n\n")
+                    tool_results.append(f"[{name}] -> {result}")
+                if stop:
+                    finished = True
+                    break
+                messages.append({"role": "user",
+                                 "content": "TOOL OUTPUT:\n" + "\n\n".join(tool_results)
+                                 + "\n\nContinue, or finish_phase."})
+            if not finished:
+                phase_md.append("_(phase advanced — step budget reached)_\n\n")
+                self.emit({"type": "phase_done", "phase": phase, "summary": "step budget reached"})
+            sections.append("".join(phase_md))
+            with open(note_path, "w", encoding="utf-8") as fh:
+                fh.write("".join(sections))
+
+        if plan_only:
+            sections.append("## STOP\n\nStopped at PLAN per plan-only.\n")
+            with open(note_path, "w", encoding="utf-8") as fh:
+                fh.write("".join(sections))
+
+        self.emit({"type": "run_done", "note": os.path.relpath(note_path, ROOT)})
+        return note_path
+
+
+# ---------------------------------------------------------------------------
+# CLI entry — run a task to completion, print events as JSONL.
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import sys
+
+    def _print(ev):
+        print(json.dumps(ev), flush=True)
+
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print("usage: tenet \"<task>\" [--tier standard] [--plan-only]")
+        print("       tenet --selftest")
+        sys.exit(0)
+
+    if sys.argv[1] == "--selftest":
+        os.environ["TENET_BACKEND"] = "mock"
+        agent = TenetAgent(emit=_print)
+        note = agent.run("selftest: prove the loop with the mock backend", tier="quick")
+        assert os.path.isfile(note), "no WORK note written"
+        with open(note) as fh:
+            body = fh.read()
+        assert "## EXECUTE" in body, "EXECUTE phase missing from WORK note"
+        assert "## LEARN" in body, "LEARN phase missing from WORK note"
+        proof = os.path.join(ROOT, "memory", "work", ".tenet-mock-proof.txt")
+        assert os.path.isfile(proof), "EXECUTE phase's write_file tool call did not run"
+        os.remove(proof)
+        print("tenet: --selftest OK — six phases ran, WORK note written, "
+              "tool call executed for real")
+        sys.exit(0)
+
+    task = sys.argv[1]
+    tier = "standard"
+    plan_only = "--plan-only" in sys.argv
+    if "--tier" in sys.argv:
+        tier = sys.argv[sys.argv.index("--tier") + 1]
+    agent = TenetAgent(emit=_print)
+    path = agent.run(task, tier=tier, plan_only=plan_only)
+    print(json.dumps({"type": "cli_done", "note": path}), flush=True)

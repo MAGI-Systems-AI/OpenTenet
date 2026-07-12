@@ -1,0 +1,16 @@
+## Aider config — Tenet
+## Cloud model (default): set ANTHROPIC_API_KEY and use claude-sonnet-4-5
+## Local model (Ollama): uncomment the model line below
+
+# model: ollama/qwen3-heretic
+
+## Full context (cloud models with large context windows):
+# read:
+#   - memory/session-context.md
+
+## Slim context (local LLMs — use this with Ollama):
+read:
+  - memory/session-context-local.md
+
+auto-commits: true
+show-model-warnings: false

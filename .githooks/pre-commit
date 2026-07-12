@@ -1,0 +1,186 @@
+#!/bin/sh
+# .githooks/pre-commit — workspace-level checks before allowing a commit
+#
+# Runs two checks against staged content (frontmatter and a 16-pattern
+# conservative secret scan):
+#   1. Frontmatter validation on staged .md files in shared durable folders
+#      (uses tools/scripts/check_front_matter.py — failing the check blocks
+#      the commit unless --no-verify is used).
+#   2. Secret-pattern scan on the diff content (blocks the commit if any
+#      high-confidence secret pattern matches; the patterns are intentionally
+#      conservative to avoid false positives).
+#
+# This is the deterministic Codex-side equivalent of Claude Code's runtime
+# security inspectors. See core/CODEX_INTEGRATION.md for the architectural
+# rationale: Claude Code does this at PreToolUse; Codex needs it at the
+# pre-commit boundary instead.
+#
+# To install this hook: tools/scripts/install_git_hooks.sh
+# To bypass for an emergency commit (the constitution discourages this):
+#   git commit --no-verify -m "..."
+
+set -eu
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$REPO_ROOT" ]; then
+    echo "pre-commit: not inside a git repository; skipping checks." >&2
+    exit 0
+fi
+
+cd "$REPO_ROOT"
+
+FAILED=0
+
+# ---------------------------------------------------------------------------
+# Check 1 — Frontmatter validation on staged .md files
+# ---------------------------------------------------------------------------
+echo "pre-commit: checking frontmatter on staged markdown files..."
+
+# Collect staged .md files in shared durable directories
+STAGED_MD="$(git diff --cached --name-only --diff-filter=ACMR \
+    | grep -E '\.md$' \
+    | grep -E '^(core|memory|projects|team|knowledge|templates|skills)/' \
+    | grep -vE '^memory/session-context-local\.md$' \
+    || true)"
+
+if [ -n "$STAGED_MD" ]; then
+    MISSING=""
+    for f in $STAGED_MD; do
+        # Skip files that no longer exist (deleted-then-restaged race)
+        [ -f "$f" ] || continue
+        FIRST_LINE="$(head -n 1 "$f")"
+        if [ "$FIRST_LINE" != "---" ]; then
+            MISSING="${MISSING}${f}\n"
+        fi
+    done
+    if [ -n "$MISSING" ]; then
+        echo "pre-commit: FAIL — these staged markdown files are missing YAML frontmatter:" >&2
+        # shellcheck disable=SC2059
+        printf "$MISSING" | sed 's/^/  /' >&2
+        FAILED=1
+    else
+        echo "pre-commit: frontmatter OK on $(echo "$STAGED_MD" | wc -l | tr -d ' ') file(s)"
+    fi
+else
+    echo "pre-commit: no staged markdown files in shared folders; skipping frontmatter check"
+fi
+
+# ---------------------------------------------------------------------------
+# Check 2 — Conservative secret-pattern scan on staged content
+# ---------------------------------------------------------------------------
+echo "pre-commit: scanning staged content for secret patterns..."
+
+# Patterns are deliberately conservative — high confidence over recall.
+# Each line is a label and a regex. False positives here are expensive
+# because they erode trust in the hook and lead to --no-verify habits.
+DIFF="$(git diff --cached --no-color || true)"
+SECRET_FOUND=0
+
+# AWS-style keys — long-lived AKIA and short-lived STS ASIA
+if printf '%s' "$DIFF" | grep -qE '^\+.*(AKIA|ASIA)[0-9A-Z]{16}'; then
+    echo "pre-commit: FAIL — possible AWS access key (AKIA/ASIA…)" >&2
+    SECRET_FOUND=1
+fi
+
+# OpenAI-style keys (sk-...)
+if printf '%s' "$DIFF" | grep -qE '^\+.*sk-[A-Za-z0-9]{32,}'; then
+    echo "pre-commit: FAIL — possible OpenAI-style API key (sk-…)" >&2
+    SECRET_FOUND=1
+fi
+
+# Anthropic-style keys (sk-ant-...)
+if printf '%s' "$DIFF" | grep -qE '^\+.*sk-ant-[A-Za-z0-9_-]{20,}'; then
+    echo "pre-commit: FAIL — possible Anthropic API key (sk-ant-…)" >&2
+    SECRET_FOUND=1
+fi
+
+# Generic PEM private keys
+if printf '%s' "$DIFF" | grep -qE '^\+.*-----BEGIN ((RSA|DSA|EC|OPENSSH|PGP) )?PRIVATE KEY-----'; then
+    echo "pre-commit: FAIL — PEM private key block detected" >&2
+    SECRET_FOUND=1
+fi
+
+# Slack tokens
+if printf '%s' "$DIFF" | grep -qE '^\+.*xox[abprs]-[0-9A-Za-z]{10,}'; then
+    echo "pre-commit: FAIL — possible Slack token (xox?-…)" >&2
+    SECRET_FOUND=1
+fi
+
+# GitHub classic PAT (ghp_/gho_/ghs_/ghu_)
+if printf '%s' "$DIFF" | grep -qE '^\+.*gh[opsu]_[A-Za-z0-9]{36,}'; then
+    echo "pre-commit: FAIL — possible GitHub classic personal access token (gh?_…)" >&2
+    SECRET_FOUND=1
+fi
+
+# GitHub fine-grained PAT (github_pat_…) — newer format, distinct prefix
+if printf '%s' "$DIFF" | grep -qE '^\+.*github_pat_[A-Za-z0-9_]{22,}'; then
+    echo "pre-commit: FAIL — possible GitHub fine-grained personal access token (github_pat_…)" >&2
+    SECRET_FOUND=1
+fi
+
+# GitLab PAT (glpat-…)
+if printf '%s' "$DIFF" | grep -qE '^\+.*glpat-[A-Za-z0-9_-]{20,}'; then
+    echo "pre-commit: FAIL — possible GitLab personal access token (glpat-…)" >&2
+    SECRET_FOUND=1
+fi
+
+# Azure storage / SQL connection strings (AccountKey=…)
+if printf '%s' "$DIFF" | grep -qE '^\+.*AccountKey=[A-Za-z0-9+/]{40,}={0,2}'; then
+    echo "pre-commit: FAIL — possible Azure storage AccountKey in connection string" >&2
+    SECRET_FOUND=1
+fi
+
+# GCP API key (AIza…) — 39 chars total
+if printf '%s' "$DIFF" | grep -qE '^\+.*AIza[0-9A-Za-z_-]{35}'; then
+    echo "pre-commit: FAIL — possible GCP API key (AIza…)" >&2
+    SECRET_FOUND=1
+fi
+
+# GCP service account JSON private_key field
+if printf '%s' "$DIFF" | grep -qE '^\+.*"private_key"[[:space:]]*:[[:space:]]*"-----BEGIN'; then
+    echo "pre-commit: FAIL — GCP service-account JSON with embedded private_key" >&2
+    SECRET_FOUND=1
+fi
+
+# Stripe live/test keys
+if printf '%s' "$DIFF" | grep -qE '^\+.*(sk|pk|rk)_(live|test)_[A-Za-z0-9]{24,}'; then
+    echo "pre-commit: FAIL — possible Stripe key (sk_/pk_/rk_ live/test)" >&2
+    SECRET_FOUND=1
+fi
+
+# Twilio Account SID (AC + 32 hex)
+if printf '%s' "$DIFF" | grep -qE '^\+.*AC[0-9a-f]{32}'; then
+    echo "pre-commit: FAIL — possible Twilio Account SID (AC…)" >&2
+    SECRET_FOUND=1
+fi
+
+# Twilio auth token (32 hex, contextualized with twilio mention to reduce FPs)
+if printf '%s' "$DIFF" | grep -qiE '^\+.*twilio.*[[:space:]:=]+[0-9a-f]{32}([^0-9a-f]|$)'; then
+    echo "pre-commit: FAIL — possible Twilio auth token near 'twilio' reference" >&2
+    SECRET_FOUND=1
+fi
+
+# JWT — header.payload.signature shape (only flag when in single line near 'token'/'bearer' to reduce FPs)
+if printf '%s' "$DIFF" | grep -qE '^\+.*eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}'; then
+    echo "pre-commit: FAIL — possible JWT (three base64 segments separated by dots, eyJ… prefix)" >&2
+    SECRET_FOUND=1
+fi
+
+if [ "$SECRET_FOUND" -eq 1 ]; then
+    FAILED=1
+else
+    echo "pre-commit: no high-confidence secret patterns in staged content"
+fi
+
+# ---------------------------------------------------------------------------
+# Exit
+# ---------------------------------------------------------------------------
+if [ "$FAILED" -eq 1 ]; then
+    echo "" >&2
+    echo "pre-commit: BLOCKED — fix the issues above, or bypass with: git commit --no-verify" >&2
+    echo "Bypassing is discouraged. See core/constitution.md (NEVER bypass safety checks)." >&2
+    exit 1
+fi
+
+echo "pre-commit: all checks passed."
+exit 0

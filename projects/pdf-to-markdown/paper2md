@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""
+paper2md — Convert research paper PDFs to LLM-optimized Markdown
+Uses pymupdf4llm which handles multi-column academic layouts natively.
+
+USAGE:
+  paper2md paper.pdf                    # outputs paper.md alongside input
+  paper2md paper.pdf -o output.md       # explicit output path
+  paper2md *.pdf                        # batch convert multiple files
+  paper2md paper.pdf --pages 1-10       # specific page range
+
+EXAMPLES:
+  paper2md ~/Downloads/attention-is-all-you-need.pdf
+  paper2md ~/Downloads/*.pdf
+"""
+
+import sys
+import os
+import argparse
+from pathlib import Path
+
+# Activate the venv's site-packages automatically
+VENV_SITE = Path(__file__).parent / "venv" / "lib"
+for p in VENV_SITE.glob("python*/site-packages"):
+    sys.path.insert(0, str(p))
+
+try:
+    import pymupdf4llm
+except ImportError:
+    print("ERROR: pymupdf4llm not found. Run:")
+    print("  ./venv/bin/pip install pymupdf4llm")
+    sys.exit(1)
+
+
+def convert(pdf_path: Path, output_path: Path | None, pages: str | None) -> Path:
+    """Convert a single PDF to markdown."""
+    if not pdf_path.exists():
+        print(f"ERROR: File not found: {pdf_path}")
+        sys.exit(1)
+
+    out = output_path or pdf_path.with_suffix(".md")
+
+    print(f"Converting: {pdf_path.name}")
+
+    kwargs: dict = {}
+    if pages:
+        # Parse "1-10" or "3,5,7" or "1-5,8" into 0-indexed list
+        page_list = []
+        for part in pages.split(","):
+            part = part.strip()
+            if "-" in part:
+                start, end = part.split("-")
+                page_list.extend(range(int(start) - 1, int(end)))
+            else:
+                page_list.append(int(part) - 1)
+        kwargs["pages"] = page_list
+
+    md_text = pymupdf4llm.to_markdown(str(pdf_path), **kwargs)
+    out.write_text(md_text, encoding="utf-8")
+
+    size_kb = len(md_text.encode()) // 1024
+    print(f"  Output:  {out}")
+    print(f"  Size:    {size_kb} KB  ({len(md_text.splitlines())} lines)")
+    return out
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Convert research paper PDFs to LLM-optimized Markdown",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    parser.add_argument("files", nargs="+", help="PDF file(s) to convert")
+    parser.add_argument("-o", "--output", help="Output file (single file only)")
+    parser.add_argument(
+        "--pages", help='Page range, e.g. "1-10" or "1,3,5-8"', default=None
+    )
+    args = parser.parse_args()
+
+    pdfs = []
+    for pattern in args.files:
+        from glob import glob
+        matches = glob(pattern)
+        if not matches:
+            pdfs.append(Path(pattern))
+        else:
+            pdfs.extend(Path(m) for m in matches)
+
+    if len(pdfs) > 1 and args.output:
+        print("ERROR: --output can only be used with a single file")
+        sys.exit(1)
+
+    output_path = Path(args.output) if args.output else None
+
+    converted = []
+    for pdf in pdfs:
+        out = convert(pdf, output_path if len(pdfs) == 1 else None, args.pages)
+        converted.append(out)
+
+    if len(converted) > 1:
+        print(f"\nDone — {len(converted)} files converted")
+    else:
+        print("\nDone")
+
+
+if __name__ == "__main__":
+    main()
