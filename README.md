@@ -1,5 +1,3 @@
-<img width="2048" height="2048" alt="opentenet-logo-cyberpunk" src="https://github.com/user-attachments/assets/a5e274b2-1788-440c-a6d8-e7fe378ede34" />
-
 # OpenTenet
 
 Your AI coding assistant is smart. It's also amnesiac, overconfident, and stateless.
