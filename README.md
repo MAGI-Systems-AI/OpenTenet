@@ -1,12 +1,12 @@
 <img width="2048" height="2048" alt="opentenet-logo-cyberpunk" src="https://github.com/user-attachments/assets/a5e274b2-1788-440c-a6d8-e7fe378ede34" />
 
-# Tenet
+# OpenTenet
 
 Your AI coding assistant is smart. It's also amnesiac, overconfident, and stateless.
 
 It forgets everything between sessions. It says "done" without checking. It hallucinates file paths and function names that don't exist. It re-litigates decisions you made last week. And every new session starts from zero — no memory of what burned you last time.
 
-**Tenet fixes that.** It's a plain-markdown workspace you drop into any project. Your AI reads it at session start and immediately has: a constitution of hard rules it must follow, a 6-phase algorithm for non-trivial work, a verification doctrine that refuses unverified claims, and a domain knowledge layer that compounds every time you use it.
+**OpenTenet fixes that.** It's a plain-markdown workspace you drop into any project. Your AI reads it at session start and immediately has: a constitution of hard rules it must follow, a 6-phase algorithm for non-trivial work, a verification doctrine that refuses unverified claims, and a domain knowledge layer that compounds every time you use it.
 
 The discipline lives in the files — which means it works with **Claude Code, Gemini CLI, Cursor, Codex, Aider, and Copilot Chat**. Switch models, switch tools, the rules stay.
 
@@ -28,7 +28,7 @@ Parts of it are. The constitution, the algorithm, the ISC doctrine — those are
 
 What makes it different from every other `.cursorrules` or `AGENTS.md` file:
 
-| | Tenet | AGENTS.md | Cursor Memory Bank | Windsurf Memories |
+| | OpenTenet | AGENTS.md | Cursor Memory Bank | Windsurf Memories |
 |---|---|---|---|---|
 | Cross-vendor (6 CLIs) | ✓ | ✓ (format only) | ✗ Cursor only | ✗ Windsurf only |
 | Structured algorithm | ✓ 6-phase + stops | ✗ | partial | ✗ |
@@ -50,19 +50,19 @@ The verification doctrine is the moat. No other tool in this space tells the AI 
 
 The six-phase algorithm, ISC doctrine, and verification probes are solutions to problems you only feel if you've been burned by an AI assistant confidently doing the wrong thing on real code.
 
-**There's a broader adjacent audience** that's underserved and closer than it looks: non-developer knowledge workers who use AI heavily — researchers, consultants, writers, analysts. They get burned by the same problems (AI says "done" without checking, forgets last week's context, re-litigates settled decisions) but have no solution for it because everything in this space is aimed at devs. Tenet works for them too — the constitution and algorithm apply to any knowledge work, not just code.
+**There's a broader adjacent audience** that's underserved and closer than it looks: non-developer knowledge workers who use AI heavily — researchers, consultants, writers, analysts. They get burned by the same problems (AI says "done" without checking, forgets last week's context, re-litigates settled decisions) but have no solution for it because everything in this space is aimed at devs. OpenTenet works for them too — the constitution and algorithm apply to any knowledge work, not just code.
 
 ---
 
 ## What changes
 
-**Before Tenet**, your AI assistant:
+**Before OpenTenet**, your AI assistant:
 - Claims tasks are done without running a single verification probe
 - Invents paths, APIs, and function names it's never seen
 - Starts every session with no memory of past mistakes
 - Runs the same failure mode twice because nothing was written down
 
-**After Tenet**, your AI assistant:
+**After OpenTenet**, your AI assistant:
 - Cannot mark something done without tool-verified evidence
 - Stops before acting to run a premortem and check known failure modes
 - Routes hard-won lessons to a domain knowledge layer that future sessions read
@@ -72,7 +72,7 @@ The six-phase algorithm, ISC doctrine, and verification probes are solutions to 
 
 ## How it works
 
-Tenet runs one loop for every non-trivial task:
+OpenTenet runs one loop for every non-trivial task:
 
 ```
 OBSERVE → THINK → PLAN → EXECUTE → VERIFY → LEARN
@@ -115,7 +115,7 @@ If it names the 6-phase algorithm, the constitution rules, the ISC doctrine, and
 
 ## Dashboard
 
-Tenet ships a local web UI so you can set up your workspace without touching a single file.
+OpenTenet ships a local web UI so you can set up your workspace without touching a single file.
 
 ```sh
 python3 dashboard/server.py
@@ -145,7 +145,7 @@ After saving any changes, hit **Rebuild Context** in the sidebar — it regenera
 2. Open `memory/current-focus.md` — fill in this week's priorities
 3. Open `memory/goals.md` — write your active goals
 4. Run `tools/scripts/build_session_context.sh` to regenerate the session context
-5. Run `bin/tenet-skill list` to see the built-in skills
+5. Run `bin/OpenTenet-skill list` to see the built-in skills
 
 ---
 
@@ -166,11 +166,11 @@ After saving any changes, hit **Rebuild Context** in the sidebar — it regenera
 
 ## Local LLM support (Ollama + Aider)
 
-Tenet works with local models via Ollama + Aider — no API key, no cloud, fully offline.
+OpenTenet works with local models via Ollama + Aider — no API key, no cloud, fully offline.
 
-Without Tenet, a local LLM is just a chat box — it answers, forgets, hallucinates paths, and calls things done without checking. Tenet gives it structure that survives the model's weaknesses:
+Without OpenTenet, a local LLM is just a chat box — it answers, forgets, hallucinates paths, and calls things done without checking. OpenTenet gives it structure that survives the model's weaknesses:
 
-| Problem with local LLMs | What Tenet does |
+| Problem with local LLMs | What OpenTenet does |
 |---|---|
 | Forgets context between sessions | WORK notes persist state to disk |
 | Says "done" without checking | ISC + verification doctrine forces a tool probe before `[x]` |
@@ -179,7 +179,7 @@ Without Tenet, a local LLM is just a chat box — it answers, forgets, hallucina
 | No way to compound learning | LEARN phase routes discoveries to `knowledge/` files |
 | Inconsistent output format | SUMMARY block mandate gives predictable output every time |
 
-The discipline lives in the **files**, not the model. A weaker local model following Tenet will outperform itself without it — the WORK note, ISCs, and verification requirements force it to prove things rather than guess.
+The discipline lives in the **files**, not the model. A weaker local model following OpenTenet will outperform itself without it — the WORK note, ISCs, and verification requirements force it to prove things rather than guess.
 
 **Setup:**
 
@@ -206,9 +206,9 @@ cd /path/to/your-workspace && aider
 Three general-purpose skills ship out of the box:
 
 ```sh
-bin/tenet-skill list                  # one line per skill
-bin/tenet-skill show planning         # full SKILL.md to stdout
-bin/tenet-skill path code-review      # absolute path for @-mention
+bin/OpenTenet-skill list                  # one line per skill
+bin/OpenTenet-skill show planning         # full SKILL.md to stdout
+bin/OpenTenet-skill path code-review      # absolute path for @-mention
 ```
 
 Add your own: create `skills/{name}/SKILL.md` with `name:` and `description:` frontmatter. Auto-discovered, no registration.
@@ -229,7 +229,7 @@ Frontmatter validation also runs on staged markdown in `core/`, `memory/`, `proj
 
 ---
 
-## What Tenet is not
+## What OpenTenet is not
 
 - Not a new AI model or wrapper around one
 - Not a cloud service — it's files in a git repo, nothing phones home
