@@ -1,3 +1,5 @@
+![Uploading opentenet-logo-cyberpunk.png…]()
+
 # Tenet
 
 Your AI coding assistant is smart. It's also amnesiac, overconfident, and stateless.
