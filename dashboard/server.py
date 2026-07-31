@@ -4,17 +4,33 @@
 Usage:
     python3 dashboard/server.py          # port 3131
     python3 dashboard/server.py 8080     # custom port
+
+Security (Attestor finding T5 — the dashboard writes AI doctrine files):
+    * Binds 127.0.0.1 only.
+    * Host-header allowlist (localhost / 127.0.0.1) — defeats DNS-rebinding,
+      where a malicious page resolves its own name to 127.0.0.1 to reach us.
+    * No wildcard CORS. Cross-origin pages cannot read our responses.
+    * Write endpoints (POST) require a per-run token. The token is minted at
+      startup, injected into the served page, and required on every write, so a
+      cross-origin/CSRF POST that doesn't know it is rejected.
+    * Every write is appended to memory/audit/dashboard-log.jsonl (T6).
 """
 
+import hmac
 import json
-import os
+import secrets
 import subprocess
 import sys
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 DASH_DIR = Path(__file__).parent
 ROOT = DASH_DIR.parent
+
+# Per-run write token — unguessable, regenerated every start.
+WRITE_TOKEN = secrets.token_urlsafe(24)
+ALLOWED_HOSTNAMES = {"127.0.0.1", "localhost"}
 
 
 def read_file(path: Path) -> str:
@@ -27,6 +43,22 @@ def read_file(path: Path) -> str:
 def write_file(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def audit(event: str, detail: dict) -> None:
+    """Append one JSON line for a state-changing dashboard action (T6)."""
+    record = {
+        "ts": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "event": event,
+        **detail,
+    }
+    try:
+        log = ROOT / "memory" / "audit" / "dashboard-log.jsonl"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 def scan_skills() -> list:
@@ -58,22 +90,38 @@ class Handler(BaseHTTPRequestHandler):
         if args and str(args[1]) not in ("200", "204"):
             super().log_message(fmt, *args)
 
-    def _cors(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+    # ----- security helpers -------------------------------------------------
+    def _host_ok(self) -> bool:
+        """Reject requests whose Host header isn't a loopback name (anti-rebind)."""
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
+        return host in ALLOWED_HOSTNAMES
+
+    def _token_ok(self) -> bool:
+        """Constant-time check of the per-run write token on state changes."""
+        supplied = self.headers.get("X-Tenet-Token", "")
+        return hmac.compare_digest(supplied, WRITE_TOKEN)
+
+    def _deny(self, status: int, message: str):
+        self.send_json({"ok": False, "error": message}, status=status)
 
     def send_json(self, data, status=200):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self._cors()
+        # No CORS: this is a same-origin, single-user local tool.
         self.end_headers()
         self.wfile.write(body)
 
     def send_html(self, path: Path):
-        body = path.read_bytes()
+        # Inject the per-run write token so the page's own POSTs can authenticate.
+        html = path.read_text(encoding="utf-8")
+        inject = f'<script>window.TENET_TOKEN={json.dumps(WRITE_TOKEN)};</script>'
+        if "</head>" in html:
+            html = html.replace("</head>", inject + "</head>", 1)
+        else:
+            html = inject + html
+        body = html.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -81,11 +129,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_OPTIONS(self):
+        # No cross-origin support; answer preflights with no CORS grant.
         self.send_response(204)
-        self._cors()
         self.end_headers()
 
     def do_GET(self):
+        if not self._host_ok():
+            self._deny(403, "forbidden host")
+            return
         p = self.path.split("?")[0]
         if p in ("/", "/index.html"):
             self.send_html(DASH_DIR / "index.html")
@@ -105,18 +156,28 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
+        # Every write path is gated on loopback Host + the per-run token.
+        if not self._host_ok():
+            self._deny(403, "forbidden host")
+            return
+        if not self._token_ok():
+            self._deny(403, "missing or invalid write token")
+            return
+
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length)
-
         p = self.path.split("?")[0]
+
         if p == "/api/focus":
             data = json.loads(raw)
             write_file(ROOT / "memory" / "current-focus.md", data["content"])
+            audit("write", {"target": "memory/current-focus.md", "bytes": len(raw)})
             self.send_json({"ok": True})
 
         elif p == "/api/identity":
             data = json.loads(raw)
             write_file(ROOT / "memory" / "identity.md", data["content"])
+            audit("write", {"target": "memory/identity.md", "bytes": len(raw)})
             self.send_json({"ok": True})
 
         elif p == "/api/rebuild":
@@ -124,6 +185,7 @@ class Handler(BaseHTTPRequestHandler):
             if not script.exists():
                 self.send_json({"ok": False, "error": "build script not found"})
                 return
+            audit("rebuild", {"script": "tools/scripts/build_session_context.sh"})
             result = subprocess.run(
                 ["bash", str(script)],
                 capture_output=True,
@@ -146,7 +208,8 @@ if __name__ == "__main__":
     server = HTTPServer(("127.0.0.1", port), Handler)
     url = f"http://localhost:{port}"
     print(f"\n  Tenet Dashboard  →  {url}\n")
-    print("  Press Ctrl+C to stop.\n")
+    print(f"  Write token (for direct API calls): {WRITE_TOKEN}")
+    print("  The web page authenticates automatically. Press Ctrl+C to stop.\n")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

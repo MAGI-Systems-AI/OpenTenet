@@ -45,3 +45,39 @@ jobs:
       - uses: actions/checkout@v5
       - name: Run repo health check
         run: python3 tools/scripts/check_repo_health.py
+
+  doctrine-integrity:
+    name: Doctrine integrity (anti-poisoning)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify session-start doctrine matches its checksum manifest
+        run: python3 tools/scripts/verify_doctrine_integrity.py
+
+  dependency-audit:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pip-audit
+        run: python3 -m pip install --upgrade pip-audit
+      - name: Audit ingest-toolchain dependencies
+        run: |
+          python3 -m pip_audit -r projects/web-to-markdown/requirements.txt --progress-spinner off
+          python3 -m pip_audit -r projects/pdf-to-markdown/requirements.txt --progress-spinner off
+
+  security-tests:
+    name: Security control tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pytest
+        run: python3 -m pip install --upgrade pytest
+      - name: Run offline security-control test suite
+        run: python3 -m pytest tests/ -q

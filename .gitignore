@@ -11,6 +11,7 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+.pytest_cache/
 
 # Editor
 .idea/
@@ -24,6 +25,13 @@ knowledge/**/.failed/
 
 # Temp files
 memory/*.tmp.*
+
+# Ingested (untrusted) converted content — quarantined, never committed and
+# never loaded as session-start doctrine. See core/constitution.md + ingest_guard.
+projects/*/output/
+
+# Runtime audit logs (ingest + dashboard provenance) — evidence lives at runtime
+memory/audit/*.jsonl
 
 # Obsidian
 .obsidian/

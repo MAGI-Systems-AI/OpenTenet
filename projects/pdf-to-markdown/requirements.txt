@@ -1,4 +1,12 @@
-docling
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-python-multipart>=0.0.9
+# pdf-to-markdown — core CLI dependencies (pdf2md / paper2md).
+#
+# Pinned for reproducibility + supply-chain integrity (Attestor finding T3).
+# `pip-audit` runs over THIS file in CI (.github/workflows/tenet-checks.yml) on
+# every push/PR — it is the audited, must-stay-clean core tree.
+#
+# docling is a fast-moving ML toolchain: upper-bounded to block a surprise major
+# rather than exact-pinned, and gated by pip-audit.
+#
+# The optional FastAPI web wrapper (`./serve`, app.py) has its own deps in
+# requirements-serve.txt — the CLI does not need them.
+docling>=2.0,<3.0
