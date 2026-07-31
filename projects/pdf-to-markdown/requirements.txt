@@ -1,4 +1,13 @@
-docling
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-python-multipart>=0.0.9
+# pdf-to-markdown dependencies.
+#
+# Pinned for reproducibility + supply-chain integrity (Attestor finding T3).
+# `pip-audit` runs over this file in CI (.github/workflows/tenet-checks.yml)
+# to catch known-vulnerable versions on every push/PR.
+#
+# docling is a fast-moving ML toolchain: upper-bounded to block a surprise major
+# rather than exact-pinned, and gated by pip-audit. The service libraries are
+# exact-pinned.
+docling>=2.0,<3.0
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9

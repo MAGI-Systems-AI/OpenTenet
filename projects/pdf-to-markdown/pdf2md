@@ -16,6 +16,13 @@ from datetime import datetime
 from pathlib import Path
 from docling.document_converter import DocumentConverter
 
+# Trust-boundary controls (injection screen, untrusted banner, audit log) live
+# in the workspace's stdlib-only ingest_guard module.
+_REPO_TOOLS = Path(__file__).resolve().parents[2] / "tools"
+if str(_REPO_TOOLS) not in sys.path:
+    sys.path.insert(0, str(_REPO_TOOLS))
+import ingest_guard  # noqa: E402
+
 
 _PANDOC_PATH: str | None = None
 
@@ -56,10 +63,13 @@ def convert_pdf_to_markdown(pdf_path: str, output_path: str = None, converter: D
     if output_path is None:
         output_path = Path(pdf_path).with_suffix('.md')
 
+    final = ingest_guard.guard_and_wrap(
+        tool="pdf2md", source=str(pdf_path), body=md_text, output_path=str(output_path),
+    )
     with open(output_path, 'w', encoding='utf-8') as f:
-        f.write(md_text)
+        f.write(final)
 
-    print(f"Done: {output_path}  ({len(md_text):,} characters)")
+    print(f"Done: {output_path}  ({len(final):,} characters)")
     return str(output_path)
 
 
@@ -90,7 +100,11 @@ def convert_docx_to_markdown(docx_path: str, output_path: str = None) -> str:
         raise RuntimeError(f"pandoc failed: {result.stderr}")
 
     md_text = Path(output_path).read_text(encoding='utf-8')
-    print(f"Done: {output_path}  ({len(md_text):,} characters)")
+    final = ingest_guard.guard_and_wrap(
+        tool="pdf2md", source=str(docx_path), body=md_text, output_path=str(output_path),
+    )
+    Path(output_path).write_text(final, encoding='utf-8')
+    print(f"Done: {output_path}  ({len(final):,} characters)")
     return str(output_path)
 
 

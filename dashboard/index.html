@@ -713,7 +713,7 @@ ${document.getElementById("f-shipped").value.trim() || "- (nothing yet)"}
   try {
     const res = await fetch("/api/focus", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Tenet-Token": window.TENET_TOKEN || "" },
       body: JSON.stringify({ content }),
     });
     const data = await res.json();
@@ -813,7 +813,7 @@ ${document.getElementById("i-purpose").value.trim() || "(not filled in yet)"}
   try {
     const res = await fetch("/api/identity", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Tenet-Token": window.TENET_TOKEN || "" },
       body: JSON.stringify({ content }),
     });
     const data = await res.json();
@@ -840,7 +840,7 @@ document.getElementById("btn-rebuild").addEventListener("click", async () => {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>';
   try {
-    const res = await fetch("/api/rebuild", { method: "POST" });
+    const res = await fetch("/api/rebuild", { method: "POST", headers: { "X-Tenet-Token": window.TENET_TOKEN || "" } });
     const data = await res.json();
     if (data.ok) {
       toast("Context rebuilt — your AI is up to date.");

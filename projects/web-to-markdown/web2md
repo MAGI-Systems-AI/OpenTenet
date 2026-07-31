@@ -20,6 +20,13 @@ from xml.etree import ElementTree as ET
 import httpx
 import trafilatura
 
+# Trust-boundary controls (SSRF guard, injection screen, untrusted banner,
+# audit log) live in the workspace's stdlib-only ingest_guard module.
+_REPO_TOOLS = Path(__file__).resolve().parents[2] / "tools"
+if str(_REPO_TOOLS) not in sys.path:
+    sys.path.insert(0, str(_REPO_TOOLS))
+import ingest_guard  # noqa: E402
+
 
 DEFAULT_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) "
@@ -33,20 +40,38 @@ SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
 # ───────────────────────── Fetch layer ─────────────────────────
 
+def _get_guarded(client: httpx.Client, url: str, max_redirects: int = 6) -> httpx.Response:
+    """httpx GET that runs the SSRF guard on the initial URL AND on every
+    redirect hop. httpx's own follow_redirects would fetch the redirect target
+    before we could inspect it, so we disable it and follow manually."""
+    current = url
+    for _ in range(max_redirects + 1):
+        ingest_guard.assert_public_url(current)
+        response = client.get(current)
+        if response.is_redirect and response.headers.get("location"):
+            nxt = response.next_request.url if response.next_request else \
+                urljoin(current, response.headers["location"])
+            current = str(nxt)
+            continue
+        return response
+    raise ingest_guard.BlockedURLError(f"too many redirects starting from {url}")
+
+
 def fetch_html(url: str, timeout: float = 30.0) -> str:
-    """Plain httpx GET with a real-browser UA. Follows redirects."""
+    """Plain httpx GET with a real-browser UA. SSRF-guarded, manual redirects."""
     with httpx.Client(
-        follow_redirects=True,
+        follow_redirects=False,
         timeout=timeout,
         headers={"User-Agent": DEFAULT_UA, "Accept": "text/html,*/*"},
     ) as client:
-        response = client.get(url)
+        response = _get_guarded(client, url)
         response.raise_for_status()
         return response.text
 
 
 def render_html(url: str, timeout_ms: int = RENDER_TIMEOUT_MS) -> str:
     """Headless chromium fetch. Waits for networkidle. Imported lazily."""
+    ingest_guard.assert_public_url(url)  # SSRF guard before navigating
     from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -163,8 +188,11 @@ def convert_url(
 
     output_path = Path(output) if output else default_output_path(url, meta, raw, crawl_dir)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(body, encoding="utf-8")
-    print(f"Done: {output_path}  ({len(body):,} characters)")
+    final = ingest_guard.guard_and_wrap(
+        tool="web2md", source=url, body=body, output_path=str(output_path),
+    )
+    output_path.write_text(final, encoding="utf-8")
+    print(f"Done: {output_path}  ({len(final):,} characters)")
     return str(output_path)
 
 
@@ -173,13 +201,13 @@ def convert_url(
 def _fetch_sitemap_xml(url: str) -> str | None:
     try:
         with httpx.Client(
-            follow_redirects=True, timeout=15.0,
+            follow_redirects=False, timeout=15.0,
             headers={"User-Agent": DEFAULT_UA},
         ) as client:
-            r = client.get(url)
+            r = _get_guarded(client, url)
             if r.status_code == 200 and r.text.strip().startswith("<"):
                 return r.text
-    except httpx.RequestError:
+    except (httpx.RequestError, ingest_guard.BlockedURLError):
         return None
     return None
 
@@ -309,7 +337,10 @@ def crawl(
             if md:
                 body = build_frontmatter(meta, url) + md if not raw else md
                 out_path = default_output_path(url, meta, raw, crawl_dir)
-                out_path.write_text(body, encoding="utf-8")
+                final = ingest_guard.guard_and_wrap(
+                    tool="web2md", source=url, body=body, output_path=str(out_path),
+                )
+                out_path.write_text(final, encoding="utf-8")
                 print(f"  saved: {out_path.name}", file=sys.stderr)
                 written.append(str(out_path))
 
