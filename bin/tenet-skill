@@ -10,7 +10,7 @@ skills cheaply (one line per skill) and load a specific skill on demand
 
 Auto-detects the workspace by walking up from the script's location looking
 for LAUNCHER.md and a skills/ directory. Override with --workspace or the
-PAI_WORKSPACE environment variable.
+TENET_WORKSPACE environment variable.
 
 Commands:
     list                 Print every skill on one line: name and description.
@@ -40,7 +40,7 @@ from pathlib import Path
 
 
 def find_workspace_root(start: Path) -> Path:
-    env = os.environ.get("PAI_WORKSPACE")
+    env = os.environ.get("TENET_WORKSPACE")
     if env:
         candidate = Path(env).expanduser().resolve()
         if (candidate / "LAUNCHER.md").exists():
@@ -55,7 +55,7 @@ def find_workspace_root(start: Path) -> Path:
         cur = cur.parent
     raise SystemExit(
         f"could not find workspace root from {start}. "
-        f"Pass --workspace or set PAI_WORKSPACE."
+        f"Pass --workspace or set TENET_WORKSPACE."
     )
 
 
