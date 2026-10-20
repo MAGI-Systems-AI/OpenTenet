@@ -6,14 +6,14 @@ product: Tenet
 audience: claude-code
 owner: operator
 status: active
-updated: 2026-07-31T05:11:47Z
+updated: 2026-10-20T02:49:13Z
 tags:
   - session-context
   - synthesized
   - claude-code-startup
 artifact_type: synthesized-context
 generated_by: tools/scripts/build_session_context.sh
-generated_at: 2026-07-31T05:11:47Z
+generated_at: 2026-10-20T02:49:13Z
 warning: do-not-edit-by-hand
 ---
 
@@ -73,6 +73,7 @@ For Codex / Aider / Gemini CLI, use `memory/session-context-codex.md` (full)
 - BEFORE EXECUTE on multi-file work, list every file to modify in the WORK note `## Plan`.
 - BEFORE deleting or moving any file, capture what's there and confirm with the user.
 - BEFORE running a destructive command, surface what it does and confirm.
+- BEFORE editing a file in team mode, run `bin/tenet-lane whose <path>`; if another member's active/blocked lane holds it, ask the owner instead.
 
 ### STOP CONDITIONS
 - Explicit "make a plan" → stop at PLAN.
@@ -188,6 +189,16 @@ No ISC → `[x]` without a tool-call probe in the same or next response block.
 | Deep | ≥12 (≥2 anti) | Yes + Decisions log | Yes | Architecture, governance, externally visible |
 
 User can override with `quick:` / `standard:` / `deep:` prefix.
+
+---
+
+## TEAM MODE (only when `team/members/` holds a member file)
+
+- Act for exactly one member — the one named in the session prompt. Never act as another member.
+- Lanes (`team/lanes/{slug}.md`): one owner, a backup, a path `scope`, `lane_status` active|blocked|paused|closed. Active/blocked lanes hold their scope.
+- WORK notes add `owner:` and `lane:` frontmatter.
+- LEARN adds: team gotchas → `team/discoveries.md`; lane state → lane `## Current state`; owner changes only via an accepted `## Handoffs` entry.
+- `core/` changes need a reviewer who is not the author. Full rules: `core/team-operations.md`.
 
 ---
 
@@ -394,6 +405,7 @@ Your operational hub. Update this when priorities shift.
 - [Knowledge Map](./knowledge/knowledge-map.md) — curated reference material
 - [Skills Map](./skills/skills-map.md) — available AI workflows
 - [Core Doctrine](./core/core-map.md) — constitution, algorithm, ISC, verification
+- [Team Map](./team/team-map.md) — roster, operational lanes, handoffs (optional team mode)
 
 ## Current Work
 

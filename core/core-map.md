@@ -40,6 +40,7 @@ Read these when the task pattern matches.
 |------|-----------------|
 | [`decision-rules.md`](./decision-rules.md) | When weighing tradeoffs — reversibility, uncertainty reduction, what to surface vs. handle silently |
 | [`front-matter-standard.md`](./front-matter-standard.md) | When creating or editing a markdown file in `core/`, `memory/`, `projects/`, `knowledge/`, `templates/`, or `skills/` |
+| [`team-operations.md`](./team-operations.md) | When the workspace is in team mode (`team/members/` holds a member file) — roster, operational lanes, handoffs, `bin/tenet-lane` |
 | [`AI_CLI_ADAPTERS.md`](./AI_CLI_ADAPTERS.md) | When wiring a new coding-assistant CLI (Codex, Claude Code, Gemini, Cursor, Aider, etc.) — includes Codex critical pitfalls |
 
 ## How These Files Compose

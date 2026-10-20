@@ -134,6 +134,17 @@ append_operational() {
         divider "active-work-map.md"
         cat "$root/active-work-map.md"
     fi
+
+    # Team layer (core/team-operations.md) — only in team mode, i.e. when
+    # team/members/ holds at least one member file besides its map.
+    if ls "$root"/team/members/*.md 2>/dev/null | grep -qv '/members-map\.md$'; then
+        for f in team/roster.md team/lanes/lanes-map.md; do
+            if [ -f "$root/$f" ]; then
+                divider "$f"
+                cat "$root/$f"
+            fi
+        done
+    fi
 }
 
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

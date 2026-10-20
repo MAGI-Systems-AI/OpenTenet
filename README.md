@@ -147,6 +147,26 @@ After saving any changes, hit **Rebuild Context** in the sidebar — it regenera
 
 ---
 
+## Team mode (optional)
+
+Tenet is solo by default. Add people and it becomes a team workspace — nothing changes until you do.
+
+- **Roster** — `team/roster.md` plus one file per person in `team/members/` (from `templates/member-template.md`).
+- **Operational lanes** — `team/lanes/{slug}.md` (from `templates/lane-template.md`): a standing area of responsibility with one owner, a backup, a scope of repo paths, and a status (`active`, `blocked`, `paused`, `closed`). Active lanes hold their scope; nobody else edits it without the owner.
+- **Handoffs** — ownership moves only through a written handoff the receiver accepts (`team/conventions.md`).
+- **Session routines** — `team/prompts/member-morning.md` and `member-close.md`: branch, pick up owned lanes and pending handoffs, close out state.
+
+```sh
+bin/tenet-lane whose projects/api/server.py   # who owns this path?
+bin/tenet-lane list                           # every lane, owner, status, scope
+bin/tenet-lane check                          # validate owners, statuses, overlaps (CI runs this)
+```
+
+The roster and lanes map load into every session's context, and the constitution adds one rule: check
+`tenet-lane whose` before editing. Full rules: `core/team-operations.md`.
+
+---
+
 ## Works with every major AI CLI
 
 | CLI | Wiring | Context file |
@@ -223,7 +243,7 @@ The pre-commit hook at `.githooks/pre-commit` scans for 16 credential patterns b
 - Private keys (RSA, EC, Ed25519, PGP)
 - Service credentials (Stripe, Twilio, Slack, JWT)
 
-Frontmatter validation also runs on staged markdown in `core/`, `memory/`, `projects/`, `knowledge/`, and `templates/`.
+Frontmatter validation also runs on staged markdown in `core/`, `memory/`, `projects/`, `knowledge/`, `templates/`, and `team/`.
 
 ---
 

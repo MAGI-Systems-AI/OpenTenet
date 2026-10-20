@@ -6,14 +6,14 @@ product: Tenet
 audience: codex
 owner: operator
 status: active
-updated: 2026-07-31T05:11:47Z
+updated: 2026-10-20T02:49:13Z
 tags:
   - session-context
   - synthesized
   - codex-startup
 artifact_type: synthesized-context
 generated_by: tools/scripts/build_session_context.sh
-generated_at: 2026-07-31T05:11:47Z
+generated_at: 2026-10-20T02:49:13Z
 warning: do-not-edit-by-hand
 ---
 
@@ -45,8 +45,8 @@ product: Tenet
 audience: individual, small-team
 owner: operator
 status: active
-updated: 2026-05-30
-version: v1.1
+updated: 2026-10-19
+version: v1.2
 tags:
   - governance
   - constitution
@@ -88,6 +88,7 @@ artifact_type: operating-rule
 - **ALWAYS produce the mandatory closing format** (`━━━ SUMMARY ━━━`) on Standard or Deep work. See `core/ALGORITHM.md`.
 - **ALWAYS route failure modes discovered during a task** to `knowledge/domain/anti-patterns.md` at LEARN. A task that revealed a failure mode and wrote nothing is an incomplete LEARN phase.
 - **ALWAYS route confirmed portable approaches** to `knowledge/domain/patterns.md` at LEARN when a verified approach proved correct and repeatable.
+- **ALWAYS route team-specific environment gotchas** to `team/discoveries.md` at LEARN when in team mode, and keep each owned lane's `## Current state` current. Lane ownership changes only through an accepted handoff (`team/conventions.md`).
 - **ALWAYS append a wisdom entry** to `memory/effectus/wisdom.md` when the ISC failure loop fired 2+ times on the same assumption. One imperative sentence with `earned from: {slug} · {date}`.
 
 ## BEFORE
@@ -100,6 +101,7 @@ artifact_type: operating-rule
 - **BEFORE EXECUTE on multi-file work**, list every file you intend to modify in the WORK note's `## Plan` section. Surprises during EXECUTE are doctrine violations.
 - **BEFORE adding a new skill**, check `skills/skills-map.md` and the existing skills to confirm overlap is intentional.
 - **BEFORE deleting or moving any file**, capture what's there and why, then confirm with the user unless the active prompt explicitly authorized the deletion.
+- **BEFORE editing a file in team mode** (`team/members/` holds ≥1 member file), run `bin/tenet-lane whose <path>`. If the path is in an `active` or `blocked` lane owned by someone other than the member you are acting for, do not edit it — ask the owner or propose the change for their review. See `core/team-operations.md`.
 - **BEFORE running a destructive command** (`rm -rf`, `git reset --hard`, `DROP`, `TRUNCATE`, force-push, anything irreversible at scale), surface what it does and confirm.
 
 ## STOP CONDITIONS
@@ -167,6 +169,9 @@ tier: [quick | standard | deep]
 reasoning_effort: [low | medium | high]
 started: [ISO date]
 updated: [ISO date]
+# team mode only (core/team-operations.md):
+owner: [member slug]
+lane: [lane slug | none]
 ---
 ```
 
@@ -357,6 +362,8 @@ Then route durable discoveries to the right surface:
 | Decision future work needs | `memory/decisions/{date}_{slug}.md` |
 | State to resume later | `memory/current-focus.md` |
 | Session summary | `memory/session-summaries/{date}_{slug}.md` |
+| Team-specific environment gotcha (team mode) | `team/discoveries.md` (`TD-N`) |
+| Lane state / responsibility moving (team mode) | the lane file's `## Current state` / `## Handoffs` |
 
 The first three rows are **required writes** when triggered — not optional. A task that revealed a failure mode and wrote nothing to `anti-patterns.md` has an incomplete LEARN phase. This is how the workspace compounds: every task that goes through LEARN makes the next task's THINK smarter.
 
@@ -1140,6 +1147,7 @@ Your operational hub. Update this when priorities shift.
 - [Knowledge Map](./knowledge/knowledge-map.md) — curated reference material
 - [Skills Map](./skills/skills-map.md) — available AI workflows
 - [Core Doctrine](./core/core-map.md) — constitution, algorithm, ISC, verification
+- [Team Map](./team/team-map.md) — roster, operational lanes, handoffs (optional team mode)
 
 ## Current Work
 

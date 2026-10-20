@@ -35,12 +35,16 @@ TOP_LEVEL_MAPS = {
     "memory": "memory/memory-map.md",
     "projects": "projects/projects-map.md",
     "templates": "templates/templates-map.md",
+    "team": "team/team-map.md",
 }
 
 NESTED_MAPS = {
     "memory/decisions": "memory/decisions/decisions-index.md",
     "memory/learnings": "memory/learnings/learnings-index.md",
     "memory/session-summaries": "memory/session-summaries/session-summaries-index.md",
+    "team/members": "team/members/members-map.md",
+    "team/lanes": "team/lanes/lanes-map.md",
+    "team/prompts": "team/team-map.md",
 }
 
 IGNORED_ROOT_FILENAMES = {
@@ -98,6 +102,7 @@ def find_front_matter_backlog() -> list[str]:
         "projects",
         "core",
         "templates",
+        "team",
     ]
     skip_parts = {"documents/raw-chunks"}
     skip_names = {"README.md"}

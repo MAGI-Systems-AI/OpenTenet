@@ -24,6 +24,13 @@ For **skills**, use the vendor-neutral CLI:
 - `bin/tenet-skill show <name>` — print the full `SKILL.md` to stdout
 - `bin/tenet-skill path <name>` — print the absolute path
 
+For **team mode** (only when `team/members/` holds a member file — see `core/team-operations.md`):
+
+- `bin/tenet-lane whose <path>` — which lane owns a path; run it before editing
+- `bin/tenet-lane list` / `members` — lanes and the roster
+- `bin/tenet-lane check` — validate owners, statuses, scope overlaps
+- Session routines: `team/prompts/member-morning.md` and `team/prompts/member-close.md`
+
 ## Gemini-Specific Notes
 
 - **Reasoning budget.** Map Tenet's `reasoning_effort:` field (`low` / `medium` / `high` in the WORK note frontmatter) to Gemini's `thinkingConfig.thinkingBudget`. Recommended: `low` → 0, `medium` → 2048, `high` → 8192. See `core/effort-tiering.md` for the full vendor-mapping table.

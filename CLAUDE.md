@@ -33,6 +33,13 @@ For **skills**, use the vendor-neutral CLI:
 - `bin/tenet-skill show <name>` — print the full `SKILL.md` to stdout
 - `bin/tenet-skill path <name>` — print the absolute path (for `@`-import)
 
+For **team mode** (only when `team/members/` holds a member file — see `core/team-operations.md`):
+
+- `bin/tenet-lane whose <path>` — which lane owns a path; run it before editing
+- `bin/tenet-lane list` / `members` — lanes and the roster
+- `bin/tenet-lane check` — validate owners, statuses, scope overlaps
+- Session routines: `team/prompts/member-morning.md` and `team/prompts/member-close.md`
+
 ## Keep Higher-Priority Instructions in Force
 
 This file adds Tenet scaffolding on top of Claude Code's defaults. When in doubt, the active prompt wins; Tenet doctrine wins on anything the active prompt doesn't speak to.

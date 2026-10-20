@@ -6,6 +6,9 @@ tier: standard
 reasoning_effort: medium
 started: YYYY-MM-DD
 updated: YYYY-MM-DD
+# team mode only — delete in a solo workspace:
+owner: member-slug
+lane: lane-slug
 ---
 
 # Task title

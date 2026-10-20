@@ -18,3 +18,7 @@ Run the 4-phase loop: OBSERVE (intent + current state + ISCs) → PLAN (scope + 
 ## Skills
 
 `bin/tenet-skill list` — one line per skill. `bin/tenet-skill show <name>` — full SKILL.md.
+
+## Team mode
+
+Only when `team/members/` holds a member file (`core/team-operations.md`): before editing a path, run `bin/tenet-lane whose <path>`; if another member's active or blocked lane owns it, ask that owner instead of editing.
