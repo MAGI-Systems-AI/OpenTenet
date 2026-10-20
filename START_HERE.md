@@ -76,6 +76,9 @@ The pre-commit hook at `.githooks/pre-commit` scans every staged commit for 16 s
 | Decision to remember | `memory/decisions/{date}_{slug}.md` |
 | Reference material | `knowledge/collections/{topic}.md` |
 | New skill | `skills/{name}/SKILL.md` |
+| Team member (team mode) | `team/members/{slug}.md` |
+| Operational lane (team mode) | `team/lanes/{slug}.md` |
+| Team-specific gotcha | `team/discoveries.md` |
 
 ## Verify the wiring
 

@@ -1,0 +1,340 @@
+#!/usr/bin/env python3
+"""tenet-lane — who owns what: operational lanes and the team roster.
+
+The machine view of Tenet's team layer (core/team-operations.md). Lanes live in
+team/lanes/{slug}.md and members in team/members/{slug}.md; both carry the
+fields this tool reads in their YAML frontmatter. A workspace with no member
+files is in solo mode and every command is a no-op success.
+
+Commands:
+    list                 Every lane: slug, owner, backup, status, scope.
+    whose <path>...      Which lane owns each path (run before editing).
+    show <slug>          Print one lane charter.
+    members              Every member: slug, status, role, lanes driven.
+    check                Validate lanes and members; exit 1 on any problem.
+
+Usage:
+    bin/tenet-lane list
+    bin/tenet-lane whose projects/api/server.py
+    bin/tenet-lane check
+    bin/tenet-lane --workspace /path/to/workspace check
+
+Exit codes:
+    0    success (check: no problems)
+    1    check found problems, unknown lane, or workspace not found
+    2    argparse / usage error
+
+Stdlib only.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fnmatch
+import os
+import sys
+from pathlib import Path
+
+LANE_STATUSES = ("active", "blocked", "paused", "closed")
+HELD_STATUSES = ("active", "blocked")  # lanes whose scope others must respect
+MEMBER_STATUSES = ("active", "away", "alumni")
+MAP_FILES = {"lanes-map.md", "members-map.md"}
+
+
+# ---------------------------------------------------------------------------
+# Workspace + frontmatter
+# ---------------------------------------------------------------------------
+
+def find_workspace_root(start: Path) -> Path:
+    env = os.environ.get("TENET_WORKSPACE")
+    if env:
+        candidate = Path(env).expanduser().resolve()
+        if (candidate / "LAUNCHER.md").exists():
+            return candidate
+    cur = start.resolve()
+    for _ in range(8):
+        if (cur / "LAUNCHER.md").exists() and (cur / "core").is_dir():
+            return cur
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    raise SystemExit(
+        f"could not find workspace root from {start}. Pass --workspace or set TENET_WORKSPACE."
+    )
+
+
+def _scalar(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        return value[1:-1]
+    return value
+
+
+def parse_frontmatter(text: str) -> dict:
+    """Parse the YAML subset Tenet uses: `key: scalar` and one-level `- item` lists."""
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}
+    data: dict = {}
+    key = None
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        stripped = line.strip()
+        if stripped.startswith("- ") and key is not None and line[:1] in (" ", "\t", "-"):
+            if not isinstance(data.get(key), list):
+                data[key] = []
+            data[key].append(_scalar(stripped[2:]))
+            continue
+        if ":" in line and not line[:1].isspace():
+            key, _, value = line.partition(":")
+            key = key.strip()
+            value = value.strip()
+            data[key] = _scalar(value) if value else []
+    return data
+
+
+def _record_files(directory: Path) -> list[Path]:
+    if not directory.is_dir():
+        return []
+    return sorted(p for p in directory.glob("*.md") if p.name not in MAP_FILES)
+
+
+def load_members(root: Path) -> dict[str, dict]:
+    members = {}
+    for path in _record_files(root / "team" / "members"):
+        fm = parse_frontmatter(path.read_text(encoding="utf-8"))
+        fm["_path"] = path
+        members[path.stem] = fm
+    return members
+
+
+def load_lanes(root: Path) -> dict[str, dict]:
+    lanes = {}
+    for path in _record_files(root / "team" / "lanes"):
+        fm = parse_frontmatter(path.read_text(encoding="utf-8"))
+        fm["_path"] = path
+        scope = fm.get("scope", [])
+        fm["scope"] = [scope] if isinstance(scope, str) and scope else (scope or [])
+        lanes[path.stem] = fm
+    return lanes
+
+
+# ---------------------------------------------------------------------------
+# Scope matching
+# ---------------------------------------------------------------------------
+
+def _norm(path: str) -> str:
+    path = path.strip().replace("\\", "/")
+    while path.startswith("./"):
+        path = path[2:]
+    return path
+
+
+def scope_matches(entry: str, path: str) -> bool:
+    entry, path = _norm(entry), _norm(path)
+    if entry.endswith("/"):
+        return path == entry.rstrip("/") or path.startswith(entry)
+    return path == entry or fnmatch.fnmatchcase(path, entry)
+
+
+def scopes_overlap(a: str, b: str) -> bool:
+    """Conservative: true when one entry could cover a path the other covers."""
+    a, b = _norm(a), _norm(b)
+    if a == b:
+        return True
+    a_base = a if a.endswith("/") else None
+    b_base = b if b.endswith("/") else None
+    if a_base and b_base:
+        return a.startswith(b) or b.startswith(a)
+    if a_base or b_base:
+        directory, other = (a, b) if a_base else (b, a)
+        # glob inside the directory, or a glob broad enough to reach into it
+        return (
+            scope_matches(directory, other)
+            or fnmatch.fnmatchcase(directory.rstrip("/"), other)
+            or fnmatch.fnmatchcase(directory + "x", other)
+        )
+    return fnmatch.fnmatchcase(a, b) or fnmatch.fnmatchcase(b, a)
+
+
+def relative_to_root(root: Path, raw: str) -> str:
+    p = Path(raw)
+    if p.is_absolute():
+        try:
+            return p.resolve().relative_to(root).as_posix()
+        except ValueError:
+            return p.as_posix()
+    return _norm(raw)
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+def check(root: Path) -> list[str]:
+    problems: list[str] = []
+    members = load_members(root)
+    lanes = load_lanes(root)
+
+    for slug, m in members.items():
+        if m.get("member") != slug:
+            problems.append(f"member {slug}: `member:` is {m.get('member')!r}, expected {slug!r}")
+        status = m.get("member_status", "active")
+        if status not in MEMBER_STATUSES:
+            problems.append(f"member {slug}: member_status {status!r} not in {MEMBER_STATUSES}")
+
+    if lanes and not members:
+        problems.append("lanes exist but team/members/ has no member files — add the owners first")
+
+    map_path = root / "team" / "lanes" / "lanes-map.md"
+    map_text = map_path.read_text(encoding="utf-8") if map_path.exists() else ""
+
+    for slug, lane in lanes.items():
+        where = f"lane {slug}"
+        if lane.get("lane") != slug:
+            problems.append(f"{where}: `lane:` is {lane.get('lane')!r}, expected {slug!r}")
+        status = lane.get("lane_status")
+        if status not in LANE_STATUSES:
+            problems.append(f"{where}: lane_status {status!r} not in {LANE_STATUSES}")
+        owner = lane.get("owner")
+        if owner not in members:
+            problems.append(f"{where}: owner {owner!r} is not a member (team/members/{owner}.md)")
+        elif status in HELD_STATUSES and members[owner].get("member_status") == "alumni":
+            problems.append(f"{where}: owner {owner!r} is alumni — hand the lane off first")
+        backup = lane.get("backup", "none")
+        if backup not in ("none", "", []) and backup not in members:
+            problems.append(f"{where}: backup {backup!r} is not a member")
+        if backup == owner and owner:
+            problems.append(f"{where}: backup cannot be the owner")
+        if not lane["scope"]:
+            problems.append(f"{where}: scope is empty")
+        if f"{slug}.md" not in map_text:
+            problems.append(f"{where}: not listed in team/lanes/lanes-map.md")
+
+    held = [(s, l) for s, l in lanes.items() if l.get("lane_status") in HELD_STATUSES]
+    for i, (sa, la) in enumerate(held):
+        for sb, lb in held[i + 1:]:
+            for ea in la["scope"]:
+                for eb in lb["scope"]:
+                    if scopes_overlap(ea, eb):
+                        problems.append(f"scope overlap: {sa} `{ea}` and {sb} `{eb}`")
+    return problems
+
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+def _solo(members: dict, lanes: dict) -> bool:
+    if not members and not lanes:
+        print("solo mode — no member files in team/members/ (see core/team-operations.md)")
+        return True
+    return False
+
+
+def cmd_list(root: Path) -> int:
+    members, lanes = load_members(root), load_lanes(root)
+    if _solo(members, lanes):
+        return 0
+    if not lanes:
+        print("no lanes defined (team/lanes/)")
+        return 0
+    for slug, lane in lanes.items():
+        print(
+            f"{slug:<20} owner={lane.get('owner', '?'):<14} backup={lane.get('backup', 'none'):<14} "
+            f"{lane.get('lane_status', '?'):<8} {', '.join(lane['scope'])}"
+        )
+    return 0
+
+
+def cmd_whose(root: Path, paths: list[str]) -> int:
+    lanes = load_lanes(root)
+    for raw in paths:
+        rel = relative_to_root(root, raw)
+        hits = [
+            (slug, lane) for slug, lane in lanes.items()
+            if any(scope_matches(e, rel) for e in lane["scope"])
+        ]
+        held = [h for h in hits if h[1].get("lane_status") in HELD_STATUSES]
+        if held:
+            for slug, lane in held:
+                print(f"{rel}: lane {slug} — owner {lane.get('owner')} ({lane.get('lane_status')})")
+        elif hits:
+            names = ", ".join(f"{s} ({l.get('lane_status')})" for s, l in hits)
+            print(f"{rel}: not held — matches {names}; read the charter before editing")
+        else:
+            print(f"{rel}: unowned")
+    return 0
+
+
+def cmd_show(root: Path, slug: str) -> int:
+    lanes = load_lanes(root)
+    if slug not in lanes:
+        known = ", ".join(lanes) or "none"
+        print(f"unknown lane {slug!r} (known: {known})", file=sys.stderr)
+        return 1
+    sys.stdout.write(lanes[slug]["_path"].read_text(encoding="utf-8"))
+    return 0
+
+
+def cmd_members(root: Path) -> int:
+    members, lanes = load_members(root), load_lanes(root)
+    if _solo(members, lanes):
+        return 0
+    for slug, m in members.items():
+        driven = [s for s, l in lanes.items() if l.get("owner") == slug and l.get("lane_status") != "closed"]
+        print(
+            f"{slug:<16} {m.get('member_status', 'active'):<8} {m.get('role', '-'):<14} "
+            f"lanes: {', '.join(driven) or '-'}"
+        )
+    return 0
+
+
+def cmd_check(root: Path) -> int:
+    members, lanes = load_members(root), load_lanes(root)
+    if _solo(members, lanes):
+        return 0
+    problems = check(root)
+    if problems:
+        print("tenet-lane check failed:")
+        for p in problems:
+            print(f"- {p}")
+        return 1
+    print(f"tenet-lane check passed: {len(members)} member(s), {len(lanes)} lane(s)")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="tenet-lane", description=__doc__.split("\n\n")[0])
+    parser.add_argument("--workspace", help="workspace root (default: auto-detect)")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("list")
+    w = sub.add_parser("whose")
+    w.add_argument("paths", nargs="+")
+    s = sub.add_parser("show")
+    s.add_argument("slug")
+    sub.add_parser("members")
+    sub.add_parser("check")
+    args = parser.parse_args(argv)
+
+    if args.workspace:
+        root = Path(args.workspace).expanduser().resolve()
+    else:
+        root = find_workspace_root(Path(__file__).parent)
+
+    if args.cmd == "list":
+        return cmd_list(root)
+    if args.cmd == "whose":
+        return cmd_whose(root, args.paths)
+    if args.cmd == "show":
+        return cmd_show(root, args.slug)
+    if args.cmd == "members":
+        return cmd_members(root)
+    return cmd_check(root)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

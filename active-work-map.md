@@ -24,6 +24,7 @@ Your operational hub. Update this when priorities shift.
 - [Knowledge Map](./knowledge/knowledge-map.md) — curated reference material
 - [Skills Map](./skills/skills-map.md) — available AI workflows
 - [Core Doctrine](./core/core-map.md) — constitution, algorithm, ISC, verification
+- [Team Map](./team/team-map.md) — roster, operational lanes, handoffs (optional team mode)
 
 ## Current Work
 

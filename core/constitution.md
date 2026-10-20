@@ -6,8 +6,8 @@ product: Tenet
 audience: individual, small-team
 owner: operator
 status: active
-updated: 2026-05-30
-version: v1.1
+updated: 2026-10-19
+version: v1.2
 tags:
   - governance
   - constitution
@@ -49,6 +49,7 @@ artifact_type: operating-rule
 - **ALWAYS produce the mandatory closing format** (`━━━ SUMMARY ━━━`) on Standard or Deep work. See `core/ALGORITHM.md`.
 - **ALWAYS route failure modes discovered during a task** to `knowledge/domain/anti-patterns.md` at LEARN. A task that revealed a failure mode and wrote nothing is an incomplete LEARN phase.
 - **ALWAYS route confirmed portable approaches** to `knowledge/domain/patterns.md` at LEARN when a verified approach proved correct and repeatable.
+- **ALWAYS route team-specific environment gotchas** to `team/discoveries.md` at LEARN when in team mode, and keep each owned lane's `## Current state` current. Lane ownership changes only through an accepted handoff (`team/conventions.md`).
 - **ALWAYS append a wisdom entry** to `memory/effectus/wisdom.md` when the ISC failure loop fired 2+ times on the same assumption. One imperative sentence with `earned from: {slug} · {date}`.
 
 ## BEFORE
@@ -61,6 +62,7 @@ artifact_type: operating-rule
 - **BEFORE EXECUTE on multi-file work**, list every file you intend to modify in the WORK note's `## Plan` section. Surprises during EXECUTE are doctrine violations.
 - **BEFORE adding a new skill**, check `skills/skills-map.md` and the existing skills to confirm overlap is intentional.
 - **BEFORE deleting or moving any file**, capture what's there and why, then confirm with the user unless the active prompt explicitly authorized the deletion.
+- **BEFORE editing a file in team mode** (`team/members/` holds ≥1 member file), run `bin/tenet-lane whose <path>`. If the path is in an `active` or `blocked` lane owned by someone other than the member you are acting for, do not edit it — ask the owner or propose the change for their review. See `core/team-operations.md`.
 - **BEFORE running a destructive command** (`rm -rf`, `git reset --hard`, `DROP`, `TRUNCATE`, force-push, anything irreversible at scale), surface what it does and confirm.
 
 ## STOP CONDITIONS

@@ -45,6 +45,8 @@ jobs:
       - uses: actions/checkout@v5
       - name: Run repo health check
         run: python3 tools/scripts/check_repo_health.py
+      - name: Validate team roster and operational lanes
+        run: python3 bin/tenet-lane check
 
   doctrine-integrity:
     name: Doctrine integrity (anti-poisoning)

@@ -24,6 +24,13 @@ For skills, use the vendor-neutral CLI:
 - `bin/tenet-skill show <name>` — print the full `SKILL.md` to stdout
 - `bin/tenet-skill path <name>` — print the absolute path (use with Cursor's `@`-mention)
 
+For **team mode** (only when `team/members/` holds a member file — see `core/team-operations.md`):
+
+- `bin/tenet-lane whose <path>` — which lane owns a path; run it before editing
+- `bin/tenet-lane list` / `members` — lanes and the roster
+- `bin/tenet-lane check` — validate owners, statuses, scope overlaps
+- Session routines: `team/prompts/member-morning.md` and `team/prompts/member-close.md`
+
 ## Cursor-Specific Notes
 
 - **File format.** This file is `.cursorrules` at the repo root — supported by all Cursor versions. Cursor v0.43+ also supports `.cursor/rules/*.mdc`; this content can be copied verbatim to `.cursor/rules/tenet.mdc` with `alwaysApply: true`.

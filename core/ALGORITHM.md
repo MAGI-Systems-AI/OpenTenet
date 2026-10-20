@@ -36,6 +36,9 @@ tier: [quick | standard | deep]
 reasoning_effort: [low | medium | high]
 started: [ISO date]
 updated: [ISO date]
+# team mode only (core/team-operations.md):
+owner: [member slug]
+lane: [lane slug | none]
 ---
 ```
 
@@ -226,6 +229,8 @@ Then route durable discoveries to the right surface:
 | Decision future work needs | `memory/decisions/{date}_{slug}.md` |
 | State to resume later | `memory/current-focus.md` |
 | Session summary | `memory/session-summaries/{date}_{slug}.md` |
+| Team-specific environment gotcha (team mode) | `team/discoveries.md` (`TD-N`) |
+| Lane state / responsibility moving (team mode) | the lane file's `## Current state` / `## Handoffs` |
 
 The first three rows are **required writes** when triggered — not optional. A task that revealed a failure mode and wrote nothing to `anti-patterns.md` has an incomplete LEARN phase. This is how the workspace compounds: every task that goes through LEARN makes the next task's THINK smarter.
 

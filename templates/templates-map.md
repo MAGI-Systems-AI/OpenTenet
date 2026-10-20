@@ -23,3 +23,5 @@ Starter shapes for common artifact types. Copy and fill in.
 | [learning-template.md](./learning-template.md) | Capturing an insight at `memory/learnings/{date}_{slug}.md` |
 | [decision-template.md](./decision-template.md) | Recording a decision at `memory/decisions/{date}_{slug}.md` |
 | [project-template.md](./project-template.md) | Starting a new project at `projects/{name}/Overview.md` |
+| [member-template.md](./member-template.md) | Adding a team member at `team/members/{slug}.md` (team mode) |
+| [lane-template.md](./lane-template.md) | Chartering an operational lane at `team/lanes/{slug}.md` (team mode) |

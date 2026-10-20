@@ -6,8 +6,8 @@ product: Tenet
 audience: individual
 owner: operator
 status: active
-updated: 2026-05-24
-version: v1.0
+updated: 2026-10-19
+version: v1.1
 tags:
   - front-matter
   - yaml
@@ -21,7 +21,7 @@ Tenet uses two frontmatter schemas — one for durable doctrine and memory files
 
 ## Standard Schema — durable workspace files
 
-Use this schema for all durable markdown files in `core/`, `memory/`, `projects/`, `knowledge/`, and `templates/`. Every field is mandatory:
+Use this schema for all durable markdown files in `core/`, `memory/`, `projects/`, `knowledge/`, `templates/`, and `team/` (team variant below). Every field is mandatory:
 
 ```yaml
 ---
@@ -54,6 +54,18 @@ artifact_type: [operating-rule | durable-memory | operational-memory | guide | n
 | `updated` | ISO date of last meaningful change. Update on edit. |
 | `tags` | Keywords for search and routing — keep to 3–6 specific terms |
 | `artifact_type` | Fine-grained classification — what role this file plays in the doctrine |
+
+## Team Variant — files under `team/`
+
+Files in `team/` (and copies of `templates/member-template.md` / `templates/lane-template.md`) use the standard
+schema with two changes: `audience: team`, and `owner:` is `team` for shared files or a member slug for a member
+file or a lane (where it names the lane's driver). Member and lane files add machine-read fields that
+`bin/tenet-lane` validates:
+
+| File | Extra fields |
+|------|--------------|
+| `team/members/{slug}.md` | `member` (= filename slug), `member_status` (`active` \| `away` \| `alumni`), `role` |
+| `team/lanes/{slug}.md` | `lane` (= filename slug), `backup` (member slug or `none`), `lane_status` (`active` \| `blocked` \| `paused` \| `closed`), `scope` (list of repo paths: `dir/` or glob), `work_note` |
 
 ## Skills Schema — vendor-portable minimal
 
