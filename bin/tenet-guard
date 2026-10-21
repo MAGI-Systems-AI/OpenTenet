@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""tenet-guard — corporate-profile runtime guard CLI.
+
+  tenet-guard install [--force]        wire the guard into this workspace (Claude Code hooks + pre-commit PII scan)
+  tenet-guard demo [--id D1,G7] [--record]
+                                       run the scenario corpus (policy/demo-cases.json) through the real hooks
+  tenet-guard check prompt|bash|read|write|fetch|search <text> [content]
+                                       ask the guard about one action, nothing logged
+  tenet-guard explain                  print every control with its NIST 800-53 / CIS v8.1 / OWASP LLM mapping
+  tenet-guard audit tail [-n N] | verify
+                                       read or verify the hash-chained decision log
+  tenet-guard hook pretool|prompt|posttool
+                                       hook entrypoint (reads the AI CLI's JSON event on stdin)
+  tenet-guard scan-staged              PII scan of the staged git diff (called by .githooks/pre-commit)
+
+Policy: policy/corporate.json. Engine: tools/guard.py. Docs: docs/security/corporate-profile.md.
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+
+import guard  # noqa: E402
+
+TTY = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+COLORS = {"block": "31", "ask": "33", "allow": "32", "flag": "35", "PASS": "32", "FAIL": "31", "GAP": "36", "dim": "2"}
+
+
+def c(text, key):
+    return f"\033[{COLORS[key]}m{text}\033[0m" if TTY else text
+
+
+def hook_verdict(out: str) -> str:
+    if not out:
+        return "allow"
+    data = json.loads(out)
+    if data.get("decision") == "block":
+        return "block"
+    hso = data.get("hookSpecificOutput", {})
+    if "additionalContext" in hso:
+        return "flag"
+    return {"deny": "block", "ask": "ask"}.get(hso.get("permissionDecision"), "allow")
+
+
+def run_event(event: dict) -> tuple[str, str]:
+    name = event.get("hook")
+    buf = io.StringIO()
+    guard.run_hook(name, stdin=io.StringIO(json.dumps(event)), stdout=buf)
+    out = buf.getvalue()
+    return hook_verdict(out), out
+
+
+# --------------------------------------------------------------------------- #
+
+def cmd_demo(args):
+    ids = None
+    if "--id" in args:
+        ids = set(args[args.index("--id") + 1].split(","))
+    record = "--record" in args
+    cases = json.loads((ROOT / "policy" / "demo-cases.json").read_text())["cases"]
+    tmp = None
+    if not record:  # keep the real audit log clean unless asked
+        tmp = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False)
+        os.environ["TENET_GUARD_LOG"] = tmp.name
+    os.environ.setdefault("TENET_WORKSPACE", str(ROOT))
+    failed, group = 0, None
+    for case in cases:
+        if ids and case["id"] not in ids:
+            continue
+        if case["group"] != group:
+            group = case["group"]
+            print(f"\n{c(group.upper(), 'dim')}")
+        got, out = run_event(case["event"])
+        ok = got == case["expect"]
+        failed += not ok
+        status = c("GAP ", "GAP") if case.get("gap") and ok else c("PASS", "PASS") if ok else c("FAIL", "FAIL")
+        print(f"  {status} {case['id']:<4} {c(f"{got.upper():<6}", got)} {case['title']}")
+        print(f"       {c('say: ' + case['say'], 'dim')}")
+        if out and (ids or not ok):
+            reason = json.loads(out)
+            text = (reason.get("reason") or reason.get("hookSpecificOutput", {}).get("permissionDecisionReason")
+                    or reason.get("hookSpecificOutput", {}).get("additionalContext", ""))
+            print("       " + text.replace("\n", "\n       "))
+        if case.get("gap"):
+            print(f"       {c('covered by: ' + case['covered_by'], 'GAP')}")
+        if not ok:
+            print(f"       expected {case['expect']}, got {got}")
+    total = len([x for x in cases if not ids or x["id"] in ids])
+    print(f"\n{total - failed}/{total} scenarios behaved as specified "
+          f"(mode={guard.mode(guard.load_policy())}, policy v{guard.load_policy().get('version')})")
+    if tmp:
+        os.unlink(tmp.name)
+    return 1 if failed else 0
+
+
+def cmd_check(args):
+    if len(args) < 2:
+        print(__doc__)
+        return 2
+    kind, text = args[0], args[1]
+    policy = guard.load_policy()
+    events = {
+        "prompt": {"hook": "prompt", "prompt": text},
+        "bash": {"hook": "pretool", "tool_name": "Bash", "tool_input": {"command": text}},
+        "read": {"hook": "pretool", "tool_name": "Read", "tool_input": {"file_path": text}},
+        "write": {"hook": "pretool", "tool_name": "Write",
+                  "tool_input": {"file_path": text, "content": args[2] if len(args) > 2 else ""}},
+        "fetch": {"hook": "pretool", "tool_name": "WebFetch", "tool_input": {"url": text, "prompt": ""}},
+        "search": {"hook": "pretool", "tool_name": "WebSearch", "tool_input": {"query": text}},
+    }
+    ev = events[kind]
+    if ev["hook"] == "prompt":
+        findings = guard.evaluate_prompt(text, policy)
+    else:
+        findings = guard.evaluate_tool(ev["tool_name"], ev["tool_input"], os.getcwd(), policy)
+    verdict = guard.decide(findings, policy)
+    print(c(verdict.upper(), verdict))
+    if findings:
+        print(guard.explain(findings))
+    return 0
+
+
+def cmd_explain(_args):
+    policy = guard.load_policy()
+    print(f"OpenTenet corporate policy v{policy['version']} — mode: {guard.mode(policy)}\n")
+    for cid, ctl in policy["controls"].items():
+        print(f"{c(cid, 'ask')}: {ctl['what']}")
+        print(f"   NIST 800-53 {', '.join(ctl['nist_800_53']) or '-'} · CIS v8.1 {', '.join(ctl['cis_v8_1']) or '-'}"
+              f" · OWASP LLM 2025 {', '.join(ctl['owasp_llm_2025']) or '-'}")
+    print(f"\n{len(policy['data_classes'])} data classes · {len(policy['protected_read_paths'])} protected paths · "
+          f"{len(policy['doctrine_paths'])} doctrine paths · {len(policy['command_rules'])} command rules · "
+          f"{len(policy['egress']['allow_domains'])} allow-listed domains")
+    return 0
+
+
+def cmd_audit(args):
+    path = guard.audit_log_path()
+    if args and args[0] == "verify":
+        ok, n, msg = guard.verify_chain(path)
+        print(c("INTACT", "PASS") if ok else c("TAMPERED", "FAIL"), msg, f"({path})")
+        return 0 if ok else 1
+    n = int(args[args.index("-n") + 1]) if "-n" in args else 15
+    if not path.exists():
+        print(f"no audit log yet at {path}")
+        return 0
+    for line in path.read_text().splitlines()[-n:]:
+        e = json.loads(line)
+        tag = "would_block" if e.get("would_block") else e["decision"]
+        print(f"{e['ts']} {c(f"{tag.upper():<11}", e['decision'])} {e['hook']:<16} {e['tool']:<10} "
+              f"{','.join(e['controls']) or '-':<22} {e.get('target', '')[:60]}")
+    return 0
+
+
+def cmd_hook(args):
+    return guard.run_hook(args[0])
+
+
+def cmd_scan_staged(_args):
+    policy = guard.load_policy()
+    diff = subprocess.run(["git", "diff", "--cached", "--no-color", "-U0"], capture_output=True, text=True,
+                          cwd=ROOT).stdout
+    added = "\n".join(l[1:] for l in diff.splitlines() if l.startswith("+") and not l.startswith("+++"))
+    hits = [h for h in guard.scan_text(added, policy) if not h[0].startswith("SEC-")]  # secrets: pre-commit's own scan
+    for cid, label, red in hits:
+        print(f"pre-commit: FAIL — {label} {red} in staged content (corporate profile)", file=sys.stderr)
+    return 1 if hits else 0
+
+
+SETTINGS = {
+    "permissions": {"deny": ["Read(./.env)", "Read(./.env.*)", "Read(~/.ssh/**)", "Read(~/.aws/**)",
+                             "Read(./data/restricted/**)"]},
+    "hooks": {
+        "UserPromptSubmit": [{"hooks": [{"type": "command",
+                                         "command": "python3 \"$CLAUDE_PROJECT_DIR/bin/tenet-guard\" hook prompt"}]}],
+        "PreToolUse": [{"matcher": "*", "hooks": [{"type": "command",
+                                                   "command": "python3 \"$CLAUDE_PROJECT_DIR/bin/tenet-guard\" hook pretool"}]}],
+        "PostToolUse": [{"matcher": "WebFetch|Read|mcp__.*", "hooks": [{"type": "command",
+                                                                        "command": "python3 \"$CLAUDE_PROJECT_DIR/bin/tenet-guard\" hook posttool"}]}],
+    },
+}
+
+
+def cmd_install(args):
+    target = ROOT / ".claude" / "settings.json"
+    if target.exists() and "--force" not in args:
+        print(f"{target} exists — merge this by hand (or re-run with --force):\n")
+        print(json.dumps(SETTINGS, indent=2))
+        return 1
+    target.parent.mkdir(exist_ok=True)
+    target.write_text(json.dumps(SETTINGS, indent=2) + "\n")
+    (ROOT / ".tenet-profile").write_text("corporate\n")
+    print(f"wrote {target}\nwrote {ROOT / '.tenet-profile'} (pre-commit now adds the PII scan)")
+    print("Restart your Claude Code session in this workspace, then run: bin/tenet-guard demo")
+    print("Production: deploy the same hooks via managed settings so users cannot remove them — "
+          "see docs/security/corporate-profile.md.")
+    return 0
+
+
+COMMANDS = {"demo": cmd_demo, "check": cmd_check, "explain": cmd_explain, "audit": cmd_audit,
+            "hook": cmd_hook, "scan-staged": cmd_scan_staged, "install": cmd_install}
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
+        print(__doc__)
+        sys.exit(2)
+    sys.exit(COMMANDS[sys.argv[1]](sys.argv[2:]))

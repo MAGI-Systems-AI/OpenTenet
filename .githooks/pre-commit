@@ -77,7 +77,8 @@ DIFF="$(git diff --cached --no-color || true)"
 SECRET_FOUND=0
 
 # AWS-style keys — long-lived AKIA and short-lived STS ASIA
-if printf '%s' "$DIFF" | grep -qE '^\+.*(AKIA|ASIA)[0-9A-Z]{16}'; then
+# (AWS's documented dummy keys end in EXAMPLE, e.g. AKIAIOSFODNN7EXAMPLE; those pass)
+if printf '%s' "$DIFF" | grep -E '^\+' | grep -oE '(AKIA|ASIA)[0-9A-Z]{16}' | grep -qvE 'EXAMPLE$'; then
     echo "pre-commit: FAIL — possible AWS access key (AKIA/ASIA…)" >&2
     SECRET_FOUND=1
 fi
@@ -170,6 +171,18 @@ if [ "$SECRET_FOUND" -eq 1 ]; then
     FAILED=1
 else
     echo "pre-commit: no high-confidence secret patterns in staged content"
+fi
+
+# ---------------------------------------------------------------------------
+# Check 3 — Corporate profile only: PII / classification scan on staged content
+# ---------------------------------------------------------------------------
+if [ "$(cat .tenet-profile 2>/dev/null)" = "corporate" ]; then
+    echo "pre-commit: corporate profile — scanning staged content for PII..."
+    if python3 bin/tenet-guard scan-staged; then
+        echo "pre-commit: no PII patterns in staged content"
+    else
+        FAILED=1
+    fi
 fi
 
 # ---------------------------------------------------------------------------

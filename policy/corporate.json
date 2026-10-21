@@ -1,0 +1,84 @@
+{
+  "profile": "corporate",
+  "version": "1.0.0",
+  "mode": "enforce",
+  "_mode_help": "enforce = block/ask as written; audit = log what WOULD have been blocked, allow everything (observe-only rollout).",
+  "allow_mode_override": true,
+  "_override_help": "true lets TENET_GUARD_MODE=audit override mode (pilots). Set false in production so only whoever owns this file can relax enforcement.",
+
+  "data_classes": [
+    {"id": "PII-SSN",   "label": "US Social Security number", "regex": "\\b(?!000|666|9\\d\\d)\\d{3}-(?!00)\\d{2}-(?!0000)\\d{4}\\b"},
+    {"id": "PCI-PAN",   "label": "Payment card number (Luhn-valid)", "regex": "\\b(?:\\d[ -]?){12,18}\\d\\b", "validator": "luhn"},
+    {"id": "PII-IBAN",  "label": "IBAN bank account", "regex": "\\b[A-Z]{2}\\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?\\b", "validator": "iban"},
+    {"id": "CLS-MARKING", "label": "Document classification marking", "regex": "\\b(?:STRICTLY CONFIDENTIAL|RESTRICTED|CUSTOMER CONFIDENTIAL)\\b"},
+    {"id": "SEC-AWS",   "label": "AWS access key", "regex": "(?:AKIA|ASIA)[0-9A-Z]{16}"},
+    {"id": "SEC-OPENAI", "label": "OpenAI-style API key", "regex": "sk-[A-Za-z0-9]{32,}"},
+    {"id": "SEC-ANTHROPIC", "label": "Anthropic API key", "regex": "sk-ant-[A-Za-z0-9_-]{20,}"},
+    {"id": "SEC-PEM",   "label": "PEM private key", "regex": "-----BEGIN ((RSA|DSA|EC|OPENSSH|PGP) )?PRIVATE KEY-----"},
+    {"id": "SEC-SLACK", "label": "Slack token", "regex": "xox[abprs]-[0-9A-Za-z]{10,}"},
+    {"id": "SEC-GITHUB", "label": "GitHub token", "regex": "(?:gh[opsu]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})"},
+    {"id": "SEC-GITLAB", "label": "GitLab token", "regex": "glpat-[A-Za-z0-9_-]{20,}"},
+    {"id": "SEC-AZURE", "label": "Azure AccountKey", "regex": "AccountKey=[A-Za-z0-9+/]{40,}={0,2}"},
+    {"id": "SEC-GCP",   "label": "GCP API key", "regex": "AIza[0-9A-Za-z_-]{35}"},
+    {"id": "SEC-STRIPE", "label": "Stripe key", "regex": "(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{24,}"},
+    {"id": "SEC-JWT",   "label": "JSON Web Token", "regex": "eyJ[A-Za-z0-9_-]{8,}\\.eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}"}
+  ],
+
+  "protected_read_paths": [
+    "**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/id_rsa*", "**/id_ed25519*",
+    "~/.ssh/**", "~/.aws/**", "~/.config/gcloud/**", "~/.azure/**", "~/.kube/config",
+    "~/.netrc", "~/.git-credentials", "~/.docker/config.json",
+    "**/data/restricted/**"
+  ],
+  "allow_read_paths": ["**/.env.example", "**/.env.sample", "**/.env.template"],
+
+  "doctrine_paths": [
+    "core/**", "CLAUDE.md", "AGENTS.md", "GEMINI.md", "memory/session-context*",
+    "memory/.doctrine-manifest.sha256", "policy/**", ".claude/**", ".githooks/**",
+    "tools/guard.py", "bin/tenet-guard", "memory/audit/**"
+  ],
+
+  "command_rules": [
+    {"id": "CMD-DESTRUCTIVE", "action": "ask",   "label": "Destructive filesystem / git / database command",
+     "regex": "(?:\\brm\\s+-[a-zA-Z]*[rf][a-zA-Z]*\\s|\\bgit\\s+reset\\s+--hard|\\bgit\\s+clean\\s+-[a-zA-Z]*f|\\bDROP\\s+(?:TABLE|DATABASE|SCHEMA)\\b|\\bTRUNCATE\\s+TABLE\\b|\\bmkfs\\b|\\bdd\\s+if=)"},
+    {"id": "CMD-BYPASS",      "action": "block", "label": "Safety-check bypass",
+     "regex": "(?:--no-verify\\b|\\bgit\\s+push\\b.*(?:--force\\b|\\s-f\\b)|--dangerously|core\\.hooksPath)"},
+    {"id": "CMD-PUBLISH",     "action": "ask",   "label": "Externally visible action (push / PR / publish)",
+     "regex": "(?:\\bgit\\s+push\\b|\\bgh\\s+(?:pr|release|repo)\\s+create\\b|\\bnpm\\s+publish\\b|\\btwine\\s+upload\\b)"},
+    {"id": "CMD-EXFIL",       "action": "block", "label": "Raw exfiltration channel",
+     "regex": "(?:\\b(?:nc|ncat|netcat|socat)\\b|\\bscp\\b|\\brsync\\b[^|;]*:|\\bcurl\\b[^|;]*(?:-T|--upload-file|-F\\s*\\S*=@|--data-binary\\s+@|-d\\s*@))"},
+    {"id": "CMD-REMOTE-EXEC", "action": "block", "label": "Download-and-execute",
+     "regex": "(?:\\b(?:curl|wget)\\b[^|]*\\|\\s*(?:ba|z)?sh\\b|base64\\s+(?:-d|--decode)[^|]*\\|\\s*(?:ba|z)?sh\\b)"},
+    {"id": "CMD-ENV-DUMP",    "action": "block", "label": "Environment / credential dump",
+     "regex": "(?:^|[;&|]\\s*)(?:env|printenv|set)\\s*(?:$|[;&|>])"},
+    {"id": "CMD-PERMS",       "action": "block", "label": "World-writable permissions",
+     "regex": "\\bchmod\\s+(?:-R\\s+)?(?:0?777|a\\+w)"}
+  ],
+
+  "egress": {
+    "_help": "Hosts the agent may reach via WebFetch or curl/wget. Everything else is blocked. Subdomains included.",
+    "allow_domains": [
+      "github.com", "githubusercontent.com", "pypi.org", "pythonhosted.org", "npmjs.org",
+      "docs.python.org", "developer.mozilla.org", "nvd.nist.gov", "cisa.gov", "owasp.org",
+      "anthropic.com", "claude.com"
+    ]
+  },
+
+  "external_tools": {
+    "_help": "Tools whose input leaves the machine (search engines, MCP servers). Their input is DLP-scanned.",
+    "dlp_scan_prefixes": ["mcp__", "WebSearch", "WebFetch"]
+  },
+
+  "controls": {
+    "DLP-PROMPT":      {"what": "PII / secrets / classified text in a prompt never reach the model provider", "nist_800_53": ["SC-7", "AC-4"], "cis_v8_1": ["3.13"], "owasp_llm_2025": ["LLM02"]},
+    "DLP-EGRESS":      {"what": "PII / secrets in data the agent sends to search engines, MCP servers or the web", "nist_800_53": ["AC-4", "SC-7"], "cis_v8_1": ["3.13"], "owasp_llm_2025": ["LLM02", "LLM06"]},
+    "DLP-WRITE":       {"what": "PII / secrets the agent writes to files (and therefore to git)", "nist_800_53": ["IA-5(7)", "SC-28"], "cis_v8_1": ["3.13", "16.1"], "owasp_llm_2025": ["LLM02"]},
+    "PATH-PROTECTED":  {"what": "Agent cannot read credential stores, .env files, keys, restricted data", "nist_800_53": ["AC-3", "AC-6"], "cis_v8_1": ["3.3"], "owasp_llm_2025": ["LLM02", "LLM06"]},
+    "PATH-SCOPE":      {"what": "Agent cannot write outside the workspace", "nist_800_53": ["AC-6"], "cis_v8_1": ["3.3"], "owasp_llm_2025": ["LLM06"]},
+    "PATH-DOCTRINE":   {"what": "Agent cannot edit its own rules, policy, hooks or audit log", "nist_800_53": ["CM-5", "AU-9"], "cis_v8_1": ["4.1"], "owasp_llm_2025": ["LLM04", "LLM06"]},
+    "CMD":             {"what": "Destructive, bypass, publish, exfiltration and remote-exec commands blocked or held for a human", "nist_800_53": ["AC-6", "CM-7"], "cis_v8_1": ["2.7", "4.1"], "owasp_llm_2025": ["LLM06"]},
+    "EGRESS-ALLOW":    {"what": "Network fetches only to allow-listed domains", "nist_800_53": ["SC-7"], "cis_v8_1": ["13.10"], "owasp_llm_2025": ["LLM02", "LLM06"]},
+    "INJECTION-FLAG":  {"what": "Fetched/read content with injection markers is flagged to the agent as data, not instructions", "nist_800_53": ["SI-10"], "cis_v8_1": [], "owasp_llm_2025": ["LLM01"]},
+    "AUDIT":           {"what": "Every decision appended to a SHA-256 hash-chained log; values redacted", "nist_800_53": ["AU-2", "AU-9", "AU-10"], "cis_v8_1": ["8.2"], "owasp_llm_2025": []}
+  }
+}
