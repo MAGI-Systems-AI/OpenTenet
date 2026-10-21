@@ -229,3 +229,39 @@ def guard_and_wrap(*, tool: str, source: str, body: str,
                   digest=digest, size=len(body.encode("utf-8")),
                   verdict=verdict, hits=hits, extra=extra)
     return untrusted_banner(source, digest, fetched, verdict, hits) + body
+
+
+# --------------------------------------------------------------------------- #
+# CLI — wrap a converter's output (e.g. pandoc) in the T1 banner + T6 record
+# --------------------------------------------------------------------------- #
+
+def main(argv: list[str] | None = None) -> int:
+    """`ingest_guard.py wrap --tool pandoc --source in.docx --out out.md < body`
+
+    Reads converted markdown on stdin, screens it, logs it, and writes it with
+    the untrusted banner prepended. Lets external converters reuse the same
+    controls the in-tree ones used."""
+    import argparse
+    import sys
+
+    p = argparse.ArgumentParser(prog="ingest_guard.py")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    w = sub.add_parser("wrap", help="banner + screen + log converted markdown from stdin")
+    w.add_argument("--tool", required=True, help="converter name for the log, e.g. pandoc")
+    w.add_argument("--source", required=True, help="original input path or URL")
+    w.add_argument("--out", required=True, help="markdown file to write")
+    args = p.parse_args(argv)
+
+    body = sys.stdin.read()
+    if not body.strip():
+        print("ingest_guard: empty input on stdin; nothing written", file=sys.stderr)
+        return 1
+    out = Path(args.out)
+    out.write_text(guard_and_wrap(tool=args.tool, source=args.source, body=body,
+                                  output_path=str(out.resolve())), encoding="utf-8")
+    print(out.resolve())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
