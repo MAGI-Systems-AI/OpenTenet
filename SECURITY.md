@@ -17,6 +17,7 @@ address. The posture is graded by [Attestor](https://github.com/MAGI-Systems-AI/
 | **Unauthenticated dashboard writes** | 127.0.0.1-only bind, Host-header allowlist (anti-DNS-rebind), per-run write token on all POSTs, no wildcard CORS | `dashboard/server.py` | `tests/test_dashboard_security.py` |
 | **No audit trail** | Append-only JSONL provenance for every ingest and every dashboard write | `memory/audit/*.jsonl` (runtime) | `tests/test_ingest_guard.py` |
 | **Partial secret scanning** | 16-pattern scan at three layers: auto-installed pre-commit hook, CI diff scan, and `pip-audit` | `.githooks/pre-commit`, `bootstrap.sh`, CI | CI `secret-scan` + `dependency-audit` |
+| **Agent acts outside policy** (reads secrets, leaks PII, edits its own rules, exfiltrates) — opt-in corporate profile | Deterministic hooks outside the model: prompt/egress/write DLP, protected + doctrine paths, command + egress policy, hash-chained redacted audit; fails closed | `policy/corporate.json`, `tools/guard.py`, `bin/tenet-guard`, `docs/security/corporate-profile.md` | `tests/test_guard.py` (36 scenarios + chain/redaction/fail-closed) |
 
 ## Operating rules
 

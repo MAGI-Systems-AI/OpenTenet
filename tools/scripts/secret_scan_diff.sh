@@ -47,7 +47,8 @@ fi
 FOUND=0
 
 # AWS-style keys — long-lived AKIA and short-lived STS ASIA
-if printf '%s' "$DIFF" | grep -qE '^\+.*(AKIA|ASIA)[0-9A-Z]{16}'; then
+# (AWS's documented dummy keys end in EXAMPLE, e.g. AKIAIOSFODNN7EXAMPLE; those pass)
+if printf '%s' "$DIFF" | grep -E '^\+' | grep -oE '(AKIA|ASIA)[0-9A-Z]{16}' | grep -qvE 'EXAMPLE$'; then
     echo "FAIL — possible AWS access key (AKIA/ASIA…)" >&2
     FOUND=1
 fi
