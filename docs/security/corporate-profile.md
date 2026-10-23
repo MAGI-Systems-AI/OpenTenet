@@ -74,6 +74,11 @@ bin/tenet-guard audit verify   # hash-chain check
 For other CLIs the guard is the same engine: wire `bin/tenet-guard hook pretool|prompt|posttool` into that
 CLI's hook mechanism. The git pre-commit floor (secrets + PII) runs no matter which CLI you use.
 
+OpenTenet's own runner (`bin/tenet`) calls the same engine in-process: every `shell` / `read_file` /
+`write_file` call is evaluated before it runs and logged to the same hash-chained log with `hook: runner`.
+`block` is refused; `ask` is refused unless the operator approves at the TTY (headless runs deny); a guard
+that cannot load fails closed.
+
 ### Production: make it non-optional
 
 The repo profile is opt-in, and a developer can delete `.claude/settings.json`. In production, put the same

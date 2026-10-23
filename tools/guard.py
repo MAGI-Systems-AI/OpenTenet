@@ -308,8 +308,10 @@ def _check_bash(command, cwd, policy, root):
     return found
 
 
-def evaluate_tool(tool: str, ti: dict, cwd: str | None, policy: dict) -> list[dict]:
-    root = workspace_root()
+def evaluate_tool(tool: str, ti: dict, cwd: str | None, policy: dict,
+                  root: Path | None = None) -> list[dict]:
+    # root lets a caller that owns its own workspace (bin/tenet) pin the boundary
+    root = Path(root).resolve() if root else workspace_root()
     ti = ti or {}
     if tool in ("Read", "NotebookRead"):
         return _check_read(ti.get("file_path") or ti.get("notebook_path", ""), cwd, policy, root)
@@ -407,7 +409,7 @@ def _summary(tool: str, ti: dict, policy: dict) -> str:
     return redact_text(str(target), policy)[:160]
 
 
-def record(hook, tool, verdict, findings, policy, summary="", session=""):
+def record(hook, tool, verdict, findings, policy, summary="", session="", path=None):
     return append_audit({
         "hook": hook,
         "tool": tool,
@@ -420,7 +422,7 @@ def record(hook, tool, verdict, findings, policy, summary="", session=""):
         "target": summary,
         "session": (session or "")[:8],
         "policy_version": policy.get("version"),
-    })
+    }, path)
 
 
 # --------------------------------------------------------------------------- #
