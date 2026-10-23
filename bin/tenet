@@ -11,7 +11,8 @@ reads/writes — against this workspace.
   Tools        = real, UNGATED execution (shell + files) over the workspace
 
 This is the BASIC tier on purpose: a plain tool-calling loop, three tools, and
-workspace path-confinement. There is no policy gate, no signed audit chain,
+workspace path-confinement on read_file / write_file (the shell tool is NOT
+confined — it runs with the operator's OS permissions). There is no policy gate, no signed audit chain,
 no multi-agent registry or delegation, no executor swap — that governed layer
 is a different, separate product. This is meant to look like what any basic
 agent script looks like (a ReAct-style loop over a few tools), not a
@@ -218,7 +219,8 @@ BACKENDS = {"openai": call_openai, "ollama": call_ollama, "claude": call_claude,
 
 # ---------------------------------------------------------------------------
 # Tools — REAL, UNGATED execution against the workspace. Three tools, one
-# safety rail (path confinement). No policy gate, no audit chain.
+# safety rail: read_file / write_file are confined to ROOT (symlinks resolved).
+# shell is not confined. No policy gate, no audit chain.
 # ---------------------------------------------------------------------------
 
 def _truncate(s: str) -> str:
@@ -243,14 +245,22 @@ def tool_shell(args: dict) -> str:
         return f"[error] shell: {e}"
 
 
-def _safe_path(path: str) -> str:
-    p = path if os.path.isabs(path) else os.path.join(ROOT, path)
-    return os.path.normpath(p)
+def _safe_path(path: str) -> str | None:
+    """Resolve `path` against ROOT; return None if it lands outside ROOT.
+    realpath follows symlinks, so a link inside the workspace pointing out of
+    it is rejected too. Absolute paths are allowed only if they resolve inside."""
+    root = os.path.realpath(ROOT)
+    p = os.path.realpath(os.path.join(root, path))
+    if p != root and not p.startswith(root + os.sep):
+        return None
+    return p
 
 
 def tool_read_file(args: dict) -> str:
     path = args.get("path", "")
     p = _safe_path(path)
+    if p is None:
+        return f"[error] read_file: path outside workspace: {path}"
     if not os.path.isfile(p):
         return f"[error] read_file: not found: {path}"
     try:
@@ -266,6 +276,8 @@ def tool_write_file(args: dict) -> str:
     if not path:
         return "[error] write_file: missing 'path'"
     p = _safe_path(path)
+    if p is None:
+        return f"[error] write_file: path outside workspace: {path}"
     try:
         os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
         with open(p, "w", encoding="utf-8") as fh:
@@ -452,7 +464,14 @@ class TenetAgent:
             f"· ungated tool execution · doctrine {len(self.doctrine)} chars\n\n"
         ]
 
-        phases = PHASES[:3] if plan_only else PHASES
+        # Quick tier skips the loop and goes straight to execution
+        # (core/ALGORITHM.md Tier Rules); plan-only always stops at PLAN.
+        if plan_only:
+            phases = PHASES[:3]
+        elif tier == "quick":
+            phases = [ph for ph in PHASES if ph[0] == "EXECUTE"]
+        else:
+            phases = PHASES
         for phase, instruction in phases:
             self.emit({"type": "phase_start", "phase": phase})
             messages.append({"role": "user",
@@ -531,7 +550,7 @@ if __name__ == "__main__":
     if sys.argv[1] == "--selftest":
         os.environ["TENET_BACKEND"] = "mock"
         agent = TenetAgent(emit=_print)
-        note = agent.run("selftest: prove the loop with the mock backend", tier="quick")
+        note = agent.run("selftest: prove the loop with the mock backend", tier="standard")
         assert os.path.isfile(note), "no WORK note written"
         with open(note) as fh:
             body = fh.read()

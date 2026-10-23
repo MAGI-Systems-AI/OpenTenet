@@ -13,7 +13,11 @@ Security (Attestor finding T5 — the dashboard writes AI doctrine files):
     * Write endpoints (POST) require a per-run token. The token is minted at
       startup, injected into the served page, and required on every write, so a
       cross-origin/CSRF POST that doesn't know it is rejected.
-    * Every write is appended to memory/audit/dashboard-log.jsonl (T6).
+    * Every write is appended to memory/audit/dashboard-log.jsonl (T6). The
+      audit entry is written FIRST; if it cannot be written, the change is
+      refused (fail closed).
+    * Request bodies are capped (MAX_BODY) and schema-checked; a stuck
+      context rebuild is killed after REBUILD_TIMEOUT seconds.
 """
 
 import hmac
@@ -31,6 +35,8 @@ ROOT = DASH_DIR.parent
 # Per-run write token — unguessable, regenerated every start.
 WRITE_TOKEN = secrets.token_urlsafe(24)
 ALLOWED_HOSTNAMES = {"127.0.0.1", "localhost"}
+MAX_BODY = 1024 * 1024  # 1 MiB — focus/identity files are a few KB
+REBUILD_TIMEOUT = 120
 
 
 def read_file(path: Path) -> str:
@@ -45,8 +51,9 @@ def write_file(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def audit(event: str, detail: dict) -> None:
-    """Append one JSON line for a state-changing dashboard action (T6)."""
+def audit(event: str, detail: dict) -> bool:
+    """Append one JSON line for a state-changing dashboard action (T6).
+    Returns False if the entry could not be written, so callers fail closed."""
     record = {
         "ts": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "event": event,
@@ -57,8 +64,10 @@ def audit(event: str, detail: dict) -> None:
         log.parent.mkdir(parents=True, exist_ok=True)
         with log.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
+        return True
+    except OSError as e:
+        print(f"  [audit] FAILED to write audit entry for {event}: {e}", file=sys.stderr)
+        return False
 
 
 def scan_skills() -> list:
@@ -100,6 +109,40 @@ class Handler(BaseHTTPRequestHandler):
         """Constant-time check of the per-run write token on state changes."""
         supplied = self.headers.get("X-Tenet-Token", "")
         return hmac.compare_digest(supplied, WRITE_TOKEN)
+
+    def _read_body(self):
+        """Return (raw_bytes, None) or (None, (status, message))."""
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except (TypeError, ValueError):
+            return None, (400, "invalid Content-Length")
+        if length < 0:
+            return None, (400, "invalid Content-Length")
+        if length > MAX_BODY:
+            return None, (413, f"body exceeds {MAX_BODY} bytes")
+        return self.rfile.read(length), None
+
+    @staticmethod
+    def _parse_content(raw: bytes):
+        """Return (content_str, None) or (None, error message) for {"content": str}."""
+        try:
+            data = json.loads(raw)
+        except (ValueError, UnicodeDecodeError):
+            return None, "malformed JSON"
+        if not isinstance(data, dict) or not isinstance(data.get("content"), str):
+            return None, "body must be an object with a string 'content'"
+        return data["content"], None
+
+    def _write_doc(self, rel: str, raw: bytes):
+        content, err = self._parse_content(raw)
+        if err:
+            self._deny(400, err)
+            return
+        if not audit("write", {"target": rel, "bytes": len(raw)}):
+            self._deny(500, "audit log unavailable; change refused")
+            return
+        write_file(ROOT / rel, content)
+        self.send_json({"ok": True})
 
     def _deny(self, status: int, message: str):
         self.send_json({"ok": False, "error": message}, status=status)
@@ -164,34 +207,37 @@ class Handler(BaseHTTPRequestHandler):
             self._deny(403, "missing or invalid write token")
             return
 
-        length = int(self.headers.get("Content-Length", 0))
-        raw = self.rfile.read(length)
+        raw, err = self._read_body()
+        if err:
+            self._deny(*err)
+            return
         p = self.path.split("?")[0]
 
         if p == "/api/focus":
-            data = json.loads(raw)
-            write_file(ROOT / "memory" / "current-focus.md", data["content"])
-            audit("write", {"target": "memory/current-focus.md", "bytes": len(raw)})
-            self.send_json({"ok": True})
+            self._write_doc("memory/current-focus.md", raw)
 
         elif p == "/api/identity":
-            data = json.loads(raw)
-            write_file(ROOT / "memory" / "identity.md", data["content"])
-            audit("write", {"target": "memory/identity.md", "bytes": len(raw)})
-            self.send_json({"ok": True})
+            self._write_doc("memory/identity.md", raw)
 
         elif p == "/api/rebuild":
             script = ROOT / "tools" / "scripts" / "build_session_context.sh"
             if not script.exists():
                 self.send_json({"ok": False, "error": "build script not found"})
                 return
-            audit("rebuild", {"script": "tools/scripts/build_session_context.sh"})
-            result = subprocess.run(
-                ["bash", str(script)],
-                capture_output=True,
-                text=True,
-                cwd=str(ROOT),
-            )
+            if not audit("rebuild", {"script": "tools/scripts/build_session_context.sh"}):
+                self._deny(500, "audit log unavailable; rebuild refused")
+                return
+            try:
+                result = subprocess.run(
+                    ["bash", str(script)],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(ROOT),
+                    timeout=REBUILD_TIMEOUT,
+                )
+            except subprocess.TimeoutExpired:
+                self._deny(504, f"rebuild timed out after {REBUILD_TIMEOUT}s")
+                return
             self.send_json({
                 "ok": result.returncode == 0,
                 "stdout": result.stdout[-2000:],
