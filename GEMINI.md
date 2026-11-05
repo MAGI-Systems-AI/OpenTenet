@@ -4,7 +4,7 @@ Google Gemini CLI reads this file at every session start. It loads Tenet's doctr
 
 ## Session Bootstrap
 
-The synthesized startup context lives in `memory/session-context.md`. That single file catenates the constitution, the 4-phase algorithm, the ISC doctrine, the verification doctrine, effort tiering, your identity, current focus, goals, and the skills catalog.
+The synthesized startup context lives in `memory/session-context.md`. That single file catenates the constitution, the 6-phase algorithm, the ISC doctrine, the verification doctrine, effort tiering, your identity, current focus, goals, and the skills catalog.
 
 **Read `memory/session-context.md` at the start of every session.** Regenerate it after any change to its sources with `tools/scripts/build_session_context.sh`.
 
@@ -12,7 +12,7 @@ The synthesized startup context lives in `memory/session-context.md`. That singl
 
 For any **non-trivial work** (multi-file, ambiguous, touching `core/`, `memory/`, or `projects/{name}/`):
 
-- Run the 4-phase Algorithm. See `core/ALGORITHM.md`. Phases: OBSERVE → PLAN → EXECUTE → VERIFY.
+- Run the 6-phase Algorithm. See `core/ALGORITHM.md`. Phases: OBSERVE → THINK → PLAN → EXECUTE → VERIFY → LEARN.
 - Create a WORK note at `memory/work/{slug}.md` (or `projects/{name}/WORK.md` for project work). The WORK note is the system of record.
 - Write acceptance criteria per `core/ISC.md`. Every criterion is one binary tool probe. Apply the Splitting Test.
 - Hold to the verification doctrine. See `core/verification-doctrine.md`. Tool-verified evidence required before marking any ISC `[x]`.
@@ -47,4 +47,4 @@ Ask:
 
 > What's in `memory/session-context.md`? Summarize what this workspace is and what rules I'm operating under.
 
-If Gemini describes the constitution, the 4-phase algorithm, the ISC doctrine, the verification doctrine, the effort tiering, your identity, and the skills catalog — the wiring works.
+If Gemini describes the constitution, the 6-phase algorithm, the ISC doctrine, the verification doctrine, the effort tiering, your identity, and the skills catalog — the wiring works.

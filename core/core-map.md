@@ -27,7 +27,7 @@ Read these five in order — they form the operational floor.
 | # | File | One-line description | Why read it |
 |---|------|---------------------|-------------|
 | 1 | [`constitution.md`](./constitution.md) | Hard NEVER / ALWAYS / BEFORE imperatives | The non-negotiable defaults. Every other doctrine file assumes the constitution is in force. |
-| 2 | [`ALGORITHM.md`](./ALGORITHM.md) | The four-phase loop: OBSERVE → PLAN → EXECUTE → VERIFY | The universal operating loop. Every non-trivial task runs through these phases. |
+| 2 | [`ALGORITHM.md`](./ALGORITHM.md) | The six-phase loop: OBSERVE → THINK → PLAN → EXECUTE → VERIFY → LEARN | The universal operating loop. Every non-trivial task runs through these phases. |
 | 3 | [`ISC.md`](./ISC.md) | Ideal State Criteria — one-binary-tool-probe acceptance criteria | The primitive that makes the Algorithm verifiable. Without ISCs, "done" is a feeling. |
 | 4 | [`verification-doctrine.md`](./verification-doctrine.md) | Required probes per artifact type | What evidence counts as passing an ISC. The substitute for runtime hooks. |
 | 5 | [`effort-tiering.md`](./effort-tiering.md) | Quick / Standard / Deep tier rules | When to run the Algorithm at all and how much ceremony to apply. Gates how the loop fires. |

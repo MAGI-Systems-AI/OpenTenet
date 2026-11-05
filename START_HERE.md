@@ -34,12 +34,12 @@ bootstrap.sh    ← one-command setup
 
 ### 2. How it works
 
-Your LLM CLI reads `memory/session-context.md` at session start. That file is a synthesized block containing the constitution, the 4-phase algorithm, the ISC doctrine, your identity, your goals, and the skills catalog. Every vendor (Claude Code, Gemini, Cursor, Aider, Codex) points at this same file through its own wiring file at the repo root.
+Your LLM CLI reads `memory/session-context.md` at session start. That file is a synthesized block containing the constitution, the 6-phase algorithm, the ISC doctrine, your identity, your goals, and the skills catalog. Every vendor (Claude Code, Gemini, Cursor, Aider, Codex) points at this same file through its own wiring file at the repo root.
 
 When you work on something non-trivial, the algorithm kicks in:
 
 ```
-OBSERVE → PLAN → EXECUTE → VERIFY
+OBSERVE → THINK → PLAN → EXECUTE → VERIFY → LEARN
 ```
 
 Each non-trivial task gets a WORK note at `memory/work/{slug}.md`. The WORK note is the system of record — it carries the intent, the acceptance criteria (ISCs), the evidence, and the reflection. Sessions can resume from it without re-explaining context.
@@ -88,4 +88,4 @@ The pre-commit hook at `.githooks/pre-commit` scans every staged commit for 16 s
 
 Then ask your LLM: *"What's in memory/session-context.md? Summarize the rules I'm operating under."*
 
-Expected: it names the 4 phases (OBSERVE, PLAN, EXECUTE, VERIFY), the ISC concept, the constitution rules, and the 3 skills.
+Expected: it names the 6 phases (OBSERVE, THINK, PLAN, EXECUTE, VERIFY, LEARN), the ISC concept, the constitution rules, and the built-in skills.

@@ -18,7 +18,7 @@ artifact_type: integration-guide
 
 # AI Coding-Assistant CLI Adapters
 
-> Tenet is vendor-neutral by design. The doctrine never branches per coding-assistant CLI — the constitution's NEVER list, the four-phase Algorithm, ISC granularity, the skills, the templates all run identically across vendors. **Only the startup-wiring file differs.** This document is the table of those wiring conventions plus concrete adapter recipes, and includes the Codex-specific pitfalls that have caused the highest-cost defects in this workspace's history.
+> Tenet is vendor-neutral by design. The doctrine never branches per coding-assistant CLI — the constitution's NEVER list, the six-phase Algorithm, ISC granularity, the skills, the templates all run identically across vendors. **Only the startup-wiring file differs.** This document is the table of those wiring conventions plus concrete adapter recipes, and includes the Codex-specific pitfalls that have caused the highest-cost defects in this workspace's history.
 
 ## Skill Discovery & Loading — `bin/tenet-skill`
 
@@ -252,7 +252,7 @@ Cursor reads instruction files from either `.cursorrules` (legacy single-file) o
 ```
 # .cursorrules
 This workspace is Tenet. See memory/session-context.md at the start of
-every session — it catenates the constitution, the four-phase Algorithm,
+every session — it catenates the constitution, the six-phase Algorithm,
 ISC doctrine, verification doctrine, effort tiering, identity, current
 focus, and the skills catalog.
 
@@ -389,7 +389,7 @@ The architectural finding: **Claude Code lets the harness be light because the m
 
 ## Related
 
-- `core/ALGORITHM.md` — the four-phase loop
+- `core/ALGORITHM.md` — the six-phase loop
 - `core/constitution.md` — the NEVER / ALWAYS / BEFORE imperatives
 - `core/ISC.md` — the `parallel_group:` ISC primitive
 - `core/effort-tiering.md` — reasoning-effort mapping per tier

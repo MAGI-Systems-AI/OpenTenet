@@ -25,6 +25,11 @@
 
 set -eu
 
+# Byte-order sorting everywhere, so the generated files are identical on
+# macOS and Linux (otherwise the skills/*/ glob order follows the locale).
+LC_ALL=C
+export LC_ALL
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
@@ -61,6 +66,16 @@ extract_field() {
             exit
         }
     ' "$file"
+}
+
+# Replace $2 with $1 only when something other than the `updated:` / `generated_at:` stamps changed.
+# Keeps re-runs from dirtying git with timestamp-only diffs. Returns 1 if unchanged.
+replace_if_changed() {
+    if [ -f "$2" ] && [ "$(grep -Ev '^(updated|generated_at): ' "$1")" = "$(grep -Ev '^(updated|generated_at): ' "$2")" ]; then
+        rm -f "$1"
+        return 1
+    fi
+    mv "$1" "$2"
 }
 
 generate() {
@@ -148,8 +163,11 @@ case "$MODE" in
         OUT="$ROOT/memory/skills-catalog.md"
         TMP="$OUT.tmp.$$"
         generate > "$TMP"
-        mv "$TMP" "$OUT"
-        LINES=$(wc -l < "$OUT")
-        echo "Wrote $OUT — $LINES lines"
+        if replace_if_changed "$TMP" "$OUT"; then
+            LINES=$(wc -l < "$OUT")
+            echo "Wrote $OUT — $LINES lines"
+        else
+            echo "Unchanged $OUT"
+        fi
         ;;
 esac
