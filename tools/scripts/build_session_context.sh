@@ -32,6 +32,11 @@
 
 set -eu
 
+# Byte-order sorting everywhere, so the generated files are identical on
+# macOS and Linux (otherwise the skills/*/ glob order follows the locale).
+LC_ALL=C
+export LC_ALL
+
 # ---------------------------------------------------------------------------
 # Locate workspace root (traverse up from CWD)
 # ---------------------------------------------------------------------------
@@ -147,6 +152,16 @@ append_operational() {
     fi
 }
 
+# Replace $2 with $1 only when something other than the `updated:` / `generated_at:` stamps changed.
+# Keeps re-runs from dirtying git with timestamp-only diffs. Returns 1 if unchanged.
+replace_if_changed() {
+    if [ -f "$2" ] && [ "$(grep -Ev '^(updated|generated_at): ' "$1")" = "$(grep -Ev '^(updated|generated_at): ' "$2")" ]; then
+        rm -f "$1"
+        return 1
+    fi
+    mv "$1" "$2"
+}
+
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # ---------------------------------------------------------------------------
@@ -217,10 +232,13 @@ HEADER
         printf '\n\n---\n_end of synthesized context (Claude Code slim edition)_\n'
     } > "$TMP_CLAUDE"
 
-    mv "$TMP_CLAUDE" "$OUT_CLAUDE"
-    LINES=$(wc -l < "$OUT_CLAUDE")
-    BYTES=$(wc -c < "$OUT_CLAUDE")
-    echo "Wrote $OUT_CLAUDE — $LINES lines, $BYTES bytes  [Claude Code slim]"
+    if replace_if_changed "$TMP_CLAUDE" "$OUT_CLAUDE"; then
+        LINES=$(wc -l < "$OUT_CLAUDE")
+        BYTES=$(wc -c < "$OUT_CLAUDE")
+        echo "Wrote $OUT_CLAUDE — $LINES lines, $BYTES bytes  [Claude Code slim]"
+    else
+        echo "Unchanged $OUT_CLAUDE  [Claude Code slim]"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -277,10 +295,13 @@ HEADER
         printf '\n\n---\n_end of synthesized context (Codex full edition)_\n'
     } > "$TMP_CODEX"
 
-    mv "$TMP_CODEX" "$OUT_CODEX"
-    LINES=$(wc -l < "$OUT_CODEX")
-    BYTES=$(wc -c < "$OUT_CODEX")
-    echo "Wrote $OUT_CODEX — $LINES lines, $BYTES bytes  [Codex full]"
+    if replace_if_changed "$TMP_CODEX" "$OUT_CODEX"; then
+        LINES=$(wc -l < "$OUT_CODEX")
+        BYTES=$(wc -c < "$OUT_CODEX")
+        echo "Wrote $OUT_CODEX — $LINES lines, $BYTES bytes  [Codex full]"
+    else
+        echo "Unchanged $OUT_CODEX  [Codex full]"
+    fi
 fi
 
 echo ""

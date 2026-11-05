@@ -4,7 +4,7 @@ Your AI coding assistant is smart. It's also amnesiac, overconfident, and statel
 
 It forgets everything between sessions. It says "done" without checking. It hallucinates file paths and function names that don't exist. It re-litigates decisions you made last week. And every new session starts from zero — no memory of what burned you last time.
 
-**OpenTenet fixes that.** It's a plain-markdown workspace you drop into any project. Your AI reads it at session start and immediately has: a constitution of hard rules it must follow, a 6-phase algorithm for non-trivial work, a verification doctrine that refuses unverified claims, and a domain knowledge layer that compounds every time you use it.
+**OpenTenet fixes that.** It's a plain-markdown workspace you set up with one command and run your AI from. Your AI reads it at session start and immediately has: a constitution of hard rules it must follow, a 6-phase algorithm for non-trivial work, a verification doctrine that refuses unverified claims, and a domain knowledge layer that compounds every time you use it.
 
 The discipline lives in the files — which means it works with **Claude Code, Gemini CLI, Cursor, Codex, Aider, and Copilot Chat**. Switch models, switch tools, the rules stay.
 
@@ -87,15 +87,40 @@ Every LEARN phase writes to `knowledge/domain/` — anti-patterns the next THINK
 
 ---
 
-## 30-second install
+## Install
+
+One command. You need `git` and Python 3.9+ (already on most Macs and Linux boxes). Nothing else, no `sudo`.
 
 ```sh
-git clone https://github.com/MAGI-Systems-AI/OpenTenet my-workspace
-cd my-workspace
-./bootstrap.sh
+curl -fsSL https://raw.githubusercontent.com/MAGI-Systems-AI/OpenTenet/main/install.sh | sh
 ```
 
-Bootstrap generates your session context, installs the pre-commit hook, and prints the wiring snippet for your CLI.
+That creates `./tenet-workspace`. To pick the folder name:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/MAGI-Systems-AI/OpenTenet/main/install.sh | sh -s -- my-workspace
+```
+
+Then open it in your AI CLI:
+
+```sh
+cd tenet-workspace
+claude        # or gemini, aider, cursor . , Copilot Chat
+```
+
+What the installer does, in order:
+
+1. Checks for `git` and Python 3.9+.
+2. Downloads OpenTenet into the folder. It refuses to touch a folder that already has files in it.
+3. Starts a **fresh git history** that belongs to you. There is no remote pointing back at OpenTenet, so your notes never get pushed here by accident.
+4. Runs `./bootstrap.sh`: builds the session context your AI reads, builds the skills catalog, installs the pre-commit secret scanner.
+5. Makes an initial commit, so you start from a clean tree. (Skipped with a note if your git name/email are not set.)
+
+If anything fails partway, it removes what it created. Prefer to read before you run? Download it first: `curl -fsSLO https://raw.githubusercontent.com/MAGI-Systems-AI/OpenTenet/main/install.sh`, read it, then `sh install.sh`.
+
+**Codex users:** one extra step after install, because Codex reads its instructions from `~/.codex/config.toml`. Run `python3 tools/scripts/install-codex-config.py`. It backs up your config first and refuses to overwrite existing instructions without `--force`.
+
+**Contributing to OpenTenet itself?** Clone the repo normally and run `./bootstrap.sh`. It is safe to re-run and only rewrites generated files when their content actually changed.
 
 ## Verify it loaded
 
@@ -221,7 +246,7 @@ cd /path/to/your-workspace && aider
 
 ## Skills
 
-Three general-purpose skills ship out of the box:
+Four general-purpose skills ship out of the box (`planning`, `research-synthesizer`, `code-review`, `Convert`):
 
 ```sh
 bin/OpenTenet-skill list                  # one line per skill

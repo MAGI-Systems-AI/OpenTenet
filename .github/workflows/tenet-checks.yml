@@ -68,3 +68,36 @@ jobs:
         run: python3 -m pip install --upgrade pytest
       - name: Run offline security-control test suite
         run: python3 -m pytest tests/ -q
+
+  install-smoke:
+    name: Install smoke test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install a fresh workspace from this commit
+        run: |
+          git config --global user.name ci
+          git config --global user.email ci@example.com
+          git switch -C ci-install
+          TENET_REPO="file://$GITHUB_WORKSPACE" TENET_REF=ci-install sh install.sh "$RUNNER_TEMP/ws"
+      - name: Workspace is independent, clean, and wired
+        working-directory: ${{ runner.temp }}/ws
+        run: |
+          test -z "$(git remote)"                          || { echo "remote still set"; exit 1; }
+          test -z "$(git status --porcelain)"              || { git status; exit 1; }
+          test "$(git config core.hooksPath)" = .githooks  || { echo "hook not installed"; exit 1; }
+          grep -q "OBSERVE" memory/session-context.md      || { echo "context missing"; exit 1; }
+      - name: Re-running bootstrap leaves the tree clean
+        working-directory: ${{ runner.temp }}/ws
+        run: |
+          ./bootstrap.sh
+          test -z "$(git status --porcelain)" || { git status; git diff | head -40; exit 1; }
+      - name: Installer refuses a non-empty directory
+        run: |
+          mkdir -p "$RUNNER_TEMP/full" && echo keep > "$RUNNER_TEMP/full/mine.txt"
+          if TENET_REPO="file://$GITHUB_WORKSPACE" sh install.sh "$RUNNER_TEMP/full"; then exit 1; fi
+          test "$(ls -A "$RUNNER_TEMP/full")" = mine.txt

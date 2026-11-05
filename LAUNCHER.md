@@ -27,7 +27,7 @@ This is the machine-readable session anchor. The `bin/tenet-skill` CLI and `tool
 1. `LAUNCHER.md` ← you are here
 2. `START_HERE.md`
 3. `core/constitution.md` — hard NEVER/ALWAYS/BEFORE imperatives
-4. `core/ALGORITHM.md` — the 4-phase operating loop
+4. `core/ALGORITHM.md` — the 6-phase operating loop
 5. `core/ISC.md` — acceptance criteria doctrine
 6. `core/effort-tiering.md` — Quick / Standard / Deep tier rules
 7. `core/verification-doctrine.md` — required probes per artifact type

@@ -13,7 +13,7 @@ Read `memory/session-context.md` at the start of every session. It contains the 
 
 ## On non-trivial work
 
-Run the 4-phase loop: OBSERVE (intent + current state + ISCs) → PLAN (scope + deliverables + risks) → EXECUTE (work + inline verification) → VERIFY (evidence per ISC + re-read check + one reflection line).
+Run the 6-phase loop: OBSERVE (intent + current state + ISCs) → THINK (risks + premortem + anti-pattern check) → PLAN (scope + deliverables) → EXECUTE (work + inline verification) → VERIFY (evidence per ISC + re-read check) → LEARN (route lessons to knowledge/).
 
 ## Skills
 

@@ -21,7 +21,7 @@ Regenerate both after any change to `core/*.md`, `memory/current-focus.md`, `mem
 
 For any **non-trivial work** (multi-file, ambiguous, touching `core/`, `memory/`, or `projects/{name}/`):
 
-- Run the 4-phase Algorithm. See `core/ALGORITHM.md`. Phases: OBSERVE → PLAN → EXECUTE → VERIFY.
+- Run the 6-phase Algorithm. See `core/ALGORITHM.md`. Phases: OBSERVE → THINK → PLAN → EXECUTE → VERIFY → LEARN.
 - Create a WORK note at `memory/work/{slug}.md` (or `projects/{name}/WORK.md` for project work). The WORK note is the system of record.
 - Write acceptance criteria per `core/ISC.md`. Every criterion is one binary tool probe. Apply the Splitting Test.
 - Hold to the verification doctrine. See `core/verification-doctrine.md`. Tool-verified evidence required before marking any ISC `[x]`.

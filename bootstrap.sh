@@ -6,8 +6,8 @@
 #
 # What it does:
 #   1. Checks prerequisites (python3, git)
-#   2. Generates memory/session-context.md
-#   3. Generates memory/skills-catalog.md
+#   2. Generates memory/skills-catalog.md
+#   3. Generates memory/session-context.md (embeds the catalog)
 #   4. Installs pre-commit hooks (or offers to init git if not a repo)
 #   5. Prints per-vendor wiring instructions and the verification prompt
 #
@@ -55,22 +55,23 @@ echo "  python:  $TENET_PYTHON"
 echo "  git:     $(command -v git)"
 echo ""
 
-# ----- 2/4 Session context -----
-echo "[2/4] Generating memory/session-context.md..."
+# ----- 2/4 Skills catalog -----
+# Built first: the session context embeds this catalog.
+echo "[2/4] Generating memory/skills-catalog.md..."
+if [ -x "tools/scripts/skills_index.sh" ]; then
+    tools/scripts/skills_index.sh
+else
+    echo "  WARNING: tools/scripts/skills_index.sh missing — skipping skills catalog" >&2
+fi
+echo ""
+
+# ----- 3/4 Session context -----
+echo "[3/4] Generating memory/session-context.md..."
 if [ -x "tools/scripts/build_session_context.sh" ]; then
     tools/scripts/build_session_context.sh
 else
     echo "  ERROR: tools/scripts/build_session_context.sh missing or not executable" >&2
     exit 1
-fi
-echo ""
-
-# ----- 3/4 Skills catalog -----
-echo "[3/4] Generating memory/skills-catalog.md..."
-if [ -x "tools/scripts/skills_index.sh" ]; then
-    tools/scripts/skills_index.sh
-else
-    echo "  WARNING: tools/scripts/skills_index.sh missing — skipping skills catalog" >&2
 fi
 echo ""
 
@@ -123,8 +124,9 @@ VERIFY WIRING (any vendor):
   Ask your LLM:
   "What's in memory/session-context.md? Summarize the rules I'm operating under."
 
-  Expected: it names OBSERVE, PLAN, EXECUTE, VERIFY, the ISC concept,
-  the constitution rules, and the 3 built-in skills.
+  Expected: it names the six phases (OBSERVE, THINK, PLAN, EXECUTE,
+  VERIFY, LEARN), the ISC concept, the constitution rules, and the
+  built-in skills.
 
 FIRST STEPS:
 
