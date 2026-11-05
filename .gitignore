@@ -35,3 +35,6 @@ memory/audit/*.jsonl
 
 # Obsidian
 .obsidian/
+
+# Runner config may hold an API key
+memory/local-llm-config.md
